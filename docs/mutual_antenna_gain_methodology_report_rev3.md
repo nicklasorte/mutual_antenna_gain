@@ -1,59 +1,8 @@
-# Mutual antenna gain between scanning radars
+# Methodology report: mutual antenna gain between scanning radars
 
-Briefing and methodology report, draft of November 2, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `main`, commit `5395ec84b05e8dfeb36b5b35e0d47acd0727778f`. The source has no CUI or pre-decisional markings, so this draft has none. The README is empty. This report comes from the code and its comments.
+Draft of November 2, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `main`, commit `5395ec84b05e8dfeb36b5b35e0d47acd0727778f`. The source has no CUI or pre-decisional markings, so this draft has none. The README is empty. This report comes from the code and its comments.
 
-## Summary for decision-makers
-
-### The main point
-
-Two sweeping radars almost never point at each other. When their beams do line up, the coupling is about 79 dB stronger than in the typical case. That is about 84 million times more power (derived).
-
-### Why this matters
-
-Mutual antenna gain sets how much of one radar's signal the other radar can receive. The code in this repository calculates the full distribution of this gain. A study can then choose the part of the distribution that fits its question, for example the typical case or the rare, high-coupling events. The code does not state which part a study must use.
-
-The code does not show what high coupling does to the victim radar. This report therefore gives no consequence. See open item 1.
-
-### A picture to remember
-
-Think of two lighthouses that sweep at different speeds. Most of the time, each light points away from the other. Now and then, both beams cross the same line at the same moment. The model counts how often that happens and how strong the coupling is when it does. (The lighthouse picture is an illustration. It is not in the source.)
-
-### The two numbers to remember
-
-The example pair is Radar A, an air-traffic-control radar with a 33.5 dBi antenna that turns at 75 degrees per second, and Radar B, with a 34 dBi antenna that turns at 90 degrees per second.
-
-- **The typical case is −11.75 dBi.** Both antennas face away from each other. You can check this number by hand. The back-lobe level of each antenna is 11 minus half the peak gain. For Radar A this is −5.75 dBi. For Radar B it is −6.0 dBi. The sum is −11.75 dBi.
-- **The worst case is 67.5 dBi.** The two main beams meet. This number is the sum of the two peak gains: 33.5 dBi plus 34 dBi.
-
-The two cases are 79.25 dB apart (derived).
-
-The model reached these numbers in a code-check run with 5 million samples and seed 20261101. This run is not a study result. No saved result file in the repository identifies a study run.
-
-How rare is the high-coupling case? In the same run, the mutual gain was above 28.06 dBi for 1% of the samples. It was above 46.21 dBi for 0.1% of the samples. It was above 67.12 dBi for 0.001% of the samples. Only 50 samples were in that last tail, so treat it as a rough value.
-
-### A result that may surprise you
-
-Equal rotation rates sound safe, but they are not. If two radars turn at the same rate, their relative angle stays fixed. With a zero offset, a main beam always meets the other antenna's back lobe, and the coupling stays low. With a 180-degree offset, the two main beams meet once in every turn. The code includes a "synchronized" option for this case.
-
-### What the model does not cover
-
-- It calculates antenna coupling only. It has no propagation loss, clutter, noise, or interference-to-noise calculation.
-- It does not model polarization mismatch.
-- The beam-axis tilt, the face tilt of the phased array, and the beam schedule of the four-face array are placeholders in the example script.
-- In the random mode, the example script ignores the rate jitter that it sets. The 75 and 90 degrees-per-second pair has a 5:6 rate ratio. The pointing pair repeats every 24 seconds (derived). The random mode treats the rates as if they drift apart.
-
-### Open items for your decision
-
-1. **Stakes (GAP).** State what high coupling does to the victim radar. The code does not say.
-2. **Decision (GAP).** State the decision that this briefing must support.
-3. **Hardest case (GAP).** The equal-rate ASR-9 pair is a good candidate. Run it as a study case and report the result. The script comment says that the synchronized F.1245 maximum is 24.425 dBi. This review did not check that value.
-4. **Cross-check.** The file `crosscheck_csharp_rev1.m` compares the code with a C# study tool. This review did not read it or run it.
-
-The remainder of this document is the technical appendix for engineers and analysts.
-
-## Technical appendix: methodology
-
-### 1. Purpose and method
+## 1. Purpose and method
 
 The model estimates the mutual antenna gain (antenna coupling) between two radars whose antennas scan. It adds the transmit gain of one radar toward the other to the receive gain of the other radar toward the first. It repeats this calculation for many pointing states. The result is a distribution, a table of percentiles, and, in the time-series mode, statistics on how long and how often high coupling lasts.[^1]
 
@@ -61,7 +10,7 @@ The method follows Rec. ITU-R M.2069-0, Annex 1. The example script applies it t
 
 The geometry does not depend on location. The two radars lie on a horizontal line of sight. Radar 2 is at 0° azimuth from radar 1, and radar 1 is at 180° azimuth from radar 2. Each antenna sweeps all azimuths. The bearing between the radars therefore changes only the rotation phase. It does not change the distribution. The path elevation at each end is an input, and the default is 0°.[^3]
 
-### 2. Coupling calculation
+## 2. Coupling calculation
 
 For path 1 to 2 and path 2 to 1, the model calculates:
 
@@ -71,7 +20,7 @@ g21 = G_tx,2(toward radar 1) + G_rx,1(toward radar 2)  (2)
 
 In these equations, each G is an antenna gain in dBi. The model finds it in the direction of the other radar, for the current pointing state of the antenna. The gains add in decibels, which is the same as a product of linear gains. If a radar uses one pattern for transmit and receive, g12 and g21 are equal. If a system defines separate `tx` and `rx` models, g12 and g21 can differ.[^4]
 
-### 3. Antenna models
+## 3. Antenna models
 
 The model supports six antenna types. The example script uses Statgain, F.1245 (for the ASR-9 comparison), and the planar array.
 
@@ -97,7 +46,7 @@ In these equations, θm = 50√(0.25G + 7)/10^(G/20) and θr = 250/10^(G/20). Ot
 
 For the planar array, the model builds a square array that reaches the requested peak gain. It applies a Taylor taper on each axis (default sidelobe level −25 dB, `nbar` of 4). It calculates the array factor on a zero-padded FFT grid, and an interpolant reads this grid. The element spacing is half a wavelength at 2,900 MHz. The element gain is the gain of one unit cell, 10 log₁₀(4π·dx·dy/λ²), or 4.97 dBi. A request for 40 dBi gives a 63-by-63 array with a broadside gain of 40.09 dBi (derived by running the preparation function).[^7] The far-sidelobe floor and the front-to-back level default to the Statgain back level for the same peak gain.[^8]
 
-### 4. Pointing states and sampling
+## 4. Pointing states and sampling
 
 The model has two modes.
 
@@ -109,11 +58,11 @@ For two radars with equal rates, independent sampling averages over an unknown r
 
 **Synchronized rotation** applies to two mechanical radars that have one equal rate. The model sweeps one revolution in steps. Radar 2 is at the azimuth of radar 1 plus a fixed offset. The step is 1/100 of the narrowest azimuth beamwidth. The result is the maximum coupling.[^14]
 
-### 5. Output statistics
+## 5. Output statistics
 
 The model builds a cumulative table and an exceedance table on a 0.1 dB grid. It uses a histogram because an empirical CDF returns one row for each sample. It reports the 50th, 90th, 99th, 99.9th, 99.99th, and 99.999th percentiles. For each percentile, it also reports the number of samples above it. A count below 10 means that the tail has too few samples.[^15]
 
-### 6. Cases in the example script
+## 6. Cases in the example script
 
 | Case | Interferer | Antenna | Scan |
 | --- | --- | --- | --- |
@@ -125,7 +74,7 @@ The model builds a cumulative table and an exceedance table on a 0.1 dB grid. It
 
 All runs use seed 20261101 and 5 million random samples. Case 1 also has a time series of 3,600 s with 8 trials. Its thresholds are 20 dBi, 30 dBi, 40 dBi, and 50 dBi.[^16] The script marks the beam-axis tilt and the AESA face tilt as TODO. It takes other values from Rec. ITU-R M.1464-2, Tables 1 and 2.
 
-### 7. Checks done in this review
+## 7. Checks done in this review
 
 These checks test the implementation. They do not validate the model.
 
@@ -145,7 +94,7 @@ These checks test the implementation. They do not validate the model.
 
 The maximum was 67.50 dBi. The model gave its warning for rates in a small-integer ratio (5:6, joint period 24 s). The run used one pattern for transmit and receive on each radar. The run is a code check from this review. It is not a study result.
 
-### 8. Open items
+## 8. Open items
 
 1. **Rate jitter in random mode.** The example script sets `rate_jitter_deg_s` to 0.5 on both rotating reflector radars. Only the time-series mode uses this value. The random-mode result for the 75 and 90 degrees-per-second pair (5:6 ratio, derived) therefore assumes rates that drift apart. The script does not model this.[^17]
 2. **No results.** The repository has no result files, so there are no findings beyond the check in Section 7.
@@ -154,7 +103,7 @@ The maximum was 67.50 dBi. The model gave its warning for rates in a small-integ
 5. **Scope.** The model has no propagation, pathloss, clutter, noise, or interference-to-noise calculation. It gives antenna coupling only. It does not model polarization mismatch.
 6. **Input limits.** Statgain needs a peak gain of 10 dBi or more. F.1245 needs a peak gain above G1.[^18]
 
-### Appendix A. Code traceability
+## Appendix A. Code traceability
 
 Commit `5395ec84b05e8dfeb36b5b35e0d47acd0727778f` is the only repository in scope. The call tracer found 5 files and 57 functions. It found no shadowed names, no data handoffs, and no missing project dependencies. All other functions are MATLAB built-in or toolbox functions. The functions `taylorwin` and `physconst` come from the Signal Processing and Aerospace toolboxes. The functions `wrapTo180` and `wrapTo360` come from the Mapping Toolbox.
 
