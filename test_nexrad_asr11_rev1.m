@@ -629,6 +629,17 @@ for k = 1:2
 end
 end
 
+function testFirstTrialRepeatsTrial(tc)
+% Trial j uses substream 1000 + j, so first_trial = 3, n_trials = 1
+% repeats trial 3 of a three-trial run exactly.
+a = quick_run(struct("n_trials", 3, "duration_s", 30));
+b = quick_run(struct("first_trial", 3, "n_trials", 1, "duration_s", 30, "keep_ts1", true));
+A = a.scan_max.asr_rev(a.scan_max.asr_rev.trial == 3, :);
+verifyEqual(tc, b.scan_max.asr_rev, A);
+verifyEqual(tc, max(b.scan_max.ts1.g21_dBi), max(A.max_g21_dBi), "AbsTol", 1e-12);
+verifyError(tc, @() quick_run(struct("first_trial", 0)), "radar_coupling:badFirstTrial");
+end
+
 function testSensitivityFunction(tc)
 b = struct("seed", 3, "vcp", 212, "sails", 3, "n_samples", 2e4, "duration_s", 120, "n_trials", 1);
 c = struct("group", {"ASR-11 tilt", "ASR-11 remote sidelobe"}, "label", {"+2.5 deg", "+6.5 dBi"}, ...

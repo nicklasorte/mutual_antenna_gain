@@ -53,13 +53,17 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .n_samples        random-mode samples for the CDF (5e6)
 %     .duration_s       time series length per trial (3600)
 %     .n_trials         time series trials (2)
+%     .first_trial      number of the first trial (1). Trial j always uses
+%                       substream 1000 + j, so first_trial = j, n_trials = 1
+%                       reruns trial j of a longer run exactly (with
+%                       keep_ts1, to get its samples).
 %     .dt_s             time series step (0.002 s: about one tenth of the
 %                       ASR-11 beam transit time, 1.45/75 = 0.019 s)
 %     .pct              percentiles reported ([50 90 99 99.9 99.99 99.999])
 %     .parallel_flag    0 (default) | 1, passed to the CDF run
 %     .cdf_pct          percent grid of out.cdf.cdf_array12/21, 0 to 100
 %                       (default 0:1:100 plus 99.5 to 99.999)
-%     .keep_ts1         true: return trial 1 of the time series in
+%     .keep_ts1         true: return the first trial of the time series in
 %                       out.scan_max.ts1 (false; about 70 MB per hour)
 %     .plot_flag        true: plot the exceedance curve with the reference
 %                       levels (false)
@@ -101,7 +105,7 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                            NEXRAD main beam on the path at each tilt +
 %                            ASR-11 floor, with predicted and simulated
 %                            share of revolutions reaching each level
-%     .scan_max.ts1          trial 1 samples when opts.keep_ts1 is true
+%     .scan_max.ts1          samples of the first trial when opts.keep_ts1 is true
 %     .scan_max.persistence  per threshold: share of complete ASR-11
 %                            revolutions whose maximum reaches it, number
 %                            of runs of consecutive such revolutions, runs
@@ -484,7 +488,8 @@ n_t = numel(t);
 h_edges = (-80:0.01:100)';
 h_counts = zeros(numel(h_edges) - 1, 1);
 S.ts1 = [];
-for j = 1:opts.n_trials
+for jj = 1:opts.n_trials
+    j = opts.first_trial + jj - 1;              % trial number (substream key)
     rs = RandStream("mrg32k3a", "Seed", opts.seed);
     rs.Substream = 1000 + j;                    % apart from the CDF substreams
     az0_n = 360*rand(rs);
@@ -540,7 +545,7 @@ for j = 1:opts.n_trials
     k = sub2ind([4 4], rN, rA);
     lobe_n = lobe_n + reshape(accumarray(k, 1, [16 1]), 4, 4);
     lobe_m = max(lobe_m, reshape(accumarray(k, g21, [16 1], @max, -Inf), 4, 4));
-    if j == 1 && opts.keep_ts1
+    if jj == 1 && opts.keep_ts1
         S.ts1 = struct("t_s", t, "g21_dBi", g21, "asr11_gain_dBi", gA, "nexrad_gain_dBi", gN, ...
             "asr11_az_off_deg", offA, "nexrad_az_off_deg", offN, "nexrad_el_deg", el_n(cut));
     end
@@ -551,7 +556,7 @@ for j = 1:opts.n_trials
     [m21, k21] = run_max(g21, first, last);
     m12 = run_max(g12, first, last);
     n_r = numel(first);
-    rev_tab{j} = table(j + zeros(n_r, 1), (1:n_r)', t(first), r_rev(rev(first)), m12, m21, ...
+    rev_tab{jj} = table(j + zeros(n_r, 1), (1:n_r)', t(first), r_rev(rev(first)), m12, m21, ...
         el_n(cut(k21)), gN(k21), gA(k21), offN(k21), offA(k21), t(k21), edge_flag(n_r), ...
         'VariableNames', ["trial", "rev", "t_start_s", "rate_deg_s", "max_g12_dBi", ...
         "max_g21_dBi", "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "asr11_gain_at_max_dBi", ...
@@ -562,7 +567,7 @@ for j = 1:opts.n_trials
     c21 = run_max(g21, first, last);
     c12 = run_max(g12, first, last);
     n_c = numel(first);
-    cut_tab{j} = table(j + zeros(n_c, 1), vol(first) - vol(1) + 1, cut(first), el_n(cut(first)), ...
+    cut_tab{jj} = table(j + zeros(n_c, 1), vol(first) - vol(1) + 1, cut(first), el_n(cut(first)), ...
         t(first), c12, c21, edge_flag(n_c), 'VariableNames', ["trial", "volume", "cut", ...
         "el_deg", "t_start_s", "max_g12_dBi", "max_g21_dBi", "complete"]);
 
@@ -571,7 +576,7 @@ for j = 1:opts.n_trials
     [v21, kv] = run_max(g21, first, last);
     v12 = run_max(g12, first, last);
     n_v = numel(first);
-    vol_tab{j} = table(j + zeros(n_v, 1), (1:n_v)', t(first), v12, v21, el_n(cut(kv)), ...
+    vol_tab{jj} = table(j + zeros(n_v, 1), (1:n_v)', t(first), v12, v21, el_n(cut(kv)), ...
         edge_flag(n_v), 'VariableNames', ["trial", "volume", "t_start_s", "max_g12_dBi", ...
         "max_g21_dBi", "el_at_max_deg", "complete"]);
 end
@@ -826,7 +831,7 @@ d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_d
     "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
-    "plot_flag", false, "keep_ts1", false, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
+    "plot_flag", false, "keep_ts1", false, "first_trial", 1, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i}) || (isempty(opts.(f{i})) && f{i} ~= "cd_rate_deg_s")
@@ -866,6 +871,9 @@ if opts.asr_remote_sl_dBi ~= 3.5 && opts.asr_pattern ~= "m1851_csc2"
 end
 if opts.asr_remote_sl_dBi > 9.5
     error("radar_coupling:badRemote", "opts.asr_remote_sl_dBi must be at or below the +9.5 dBi first sidelobe.");
+end
+if ~isscalar(opts.first_trial) || opts.first_trial < 1 || opts.first_trial ~= round(opts.first_trial)
+    error("radar_coupling:badFirstTrial", "opts.first_trial must be a positive integer.");
 end
 if opts.dt_s <= 0 || opts.dt_s > 0.01
     error("radar_coupling:badDt", "opts.dt_s must be in (0, 0.01] s to resolve the 1.45 deg ASR-11 beam at 75 deg/s.");

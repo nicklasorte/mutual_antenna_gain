@@ -7,7 +7,8 @@
 %     fig4_exceedance.png         MAG exceedance with reference levels
 %     fig5_max_per_rev.png        maximum MAG per ASR-11 revolution
 %     fig7_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
-%     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, trial 1)
+%     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, the
+%                                 trial with the most peaks above the 45.5 dBi plateau)
 %     fig8_sensitivity.png        MAG change for each antenna and scan assumption
 %     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
 %     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
@@ -63,14 +64,27 @@ if exist("example_overrides", "var")
     o_long = merge_overrides_rev1(o_long, example_overrides);
 end
 o_long.n_trials = n_h;
-o_long.keep_ts1 = true;
 wl = nexrad_asr11_mag_rev1(o_long);
 Rl = wl.scan_max.asr_rev(wl.scan_max.asr_rev.complete, :);
+% Trial shown in Figures 5 and 6: the hour with the most peaks above the
+% 45.5 dBi plateau (ties: the largest peak). Rerun only that trial to keep
+% its samples; trial j always uses substream 1000 + j, so it repeats.
+lev_hi = wl.ref_levels.mag_dBi(3) + 1;
+[G, tr] = findgroups(Rl.trial);
+n_pk = splitapply(@(g) sum(g >= lev_hi), Rl.max_g21_dBi, G);
+m_pk = splitapply(@max, Rl.max_g21_dBi, G);
+[~, k_tr] = sortrows([n_pk, m_pk], [-1 -2]);
+j_fig = tr(k_tr(1));
+o_fig = o_long;
+o_fig.first_trial = j_fig;
+o_fig.n_trials = 1;
+o_fig.n_samples = 1e4;                          % the random-mode CDF is not used
+o_fig.keep_ts1 = true;
+wf = nexrad_asr11_mag_rev1(o_fig);
 writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
 writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev4.csv"));
 writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev4.csv"));
 writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev4.csv"));
-lev_hi = wl.ref_levels.mag_dBi(3) + 1;                % above the 45.5 dBi plateau
 pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
     "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
     "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
@@ -214,7 +228,7 @@ save_fig(f, out_dir, "fig4_exceedance");
 % ---- Figure 5: maximum MAG per ASR-11 revolution, trial 1, peaks labeled ----
 f = new_fig(6.5, 3.4);
 ax = axes(f);
-Rv = wl.scan_max.asr_rev(wl.scan_max.asr_rev.trial == 1 & wl.scan_max.asr_rev.complete, :);
+Rv = wf.scan_max.asr_rev(wf.scan_max.asr_rev.complete, :);   % trial j_fig
 R = wl.ref_levels;
 P = wl.scan_max.plateaus;
 plot(ax, Rv.t_start_s, Rv.max_g21_dBi, "-", "Color", c.blue, "LineWidth", 0.9); hold(ax, "on");
@@ -240,12 +254,12 @@ for k = 1:height(pk1)
     end
     put_label(ax, pk1.t_start_s(k) + dx, pk1.max_g21_dBi(k) + yoff(mod(k - 1, 5) + 1), txt, c.blue, true, ha, "w");
 end
-style(ax, c, "Time (s), trial 1", "Maximum MAG per revolution (dBi)", "");
+style(ax, c, sprintf("Time (s), trial %d", j_fig), "Maximum MAG per revolution (dBi)", "");
 ylim(ax, [15 85]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
-% ---- Figure 6: anatomy of the two largest peaks in trial 1 --------------------
-T1 = wl.scan_max.ts1;
+% ---- Figure 6: anatomy of the two largest peaks in trial j_fig ---------------
+T1 = wf.scan_max.ts1;
 [~, o] = sort(pk1.max_g21_dBi, "descend");
 f = new_fig(6.5, 3.0);
 tl = tiledlayout(f, 1, 2, "TileSpacing", "compact", "Padding", "compact");
