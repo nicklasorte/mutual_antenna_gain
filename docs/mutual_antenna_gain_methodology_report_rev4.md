@@ -2,19 +2,20 @@
 
 # Methodology report: mutual antenna gain between scanning radars
 
-Revision 4, draft of November 5, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `feature/antenna-concerns`, commit `38e19629a610395f903fb845dd5537786d1e4337` (code at the final run), with older references to commits `d367a9047512c436434538e1d61f153c38c2c4a4` and `99d3000fe59a62234992e34e36a25a9913d5161a` where that code is unchanged. This report comes from the code, its comments, and runs of the code in MATLAB.
+Revision 4, draft of November 5, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `feat/asr9`, commit `52c5b9f1a36b76b54d47690591e5ddfe12da475e` (code at the final run, with the ASR-9), with older references to commits `38e19629a610395f903fb845dd5537786d1e4337`, `d367a9047512c436434538e1d61f153c38c2c4a4`, and `99d3000fe59a62234992e34e36a25a9913d5161a` where that code is unchanged. This report comes from the code, its comments, and runs of the code in MATLAB.
 
 Changes from revision 3:
 
 - Adds a worked example between a NOAA WSR-88D (NEXRAD) weather radar and an FAA ASR-11 airport surveillance radar (Section 7). It uses the operational NEXRAD volume coverage patterns (VCPs), published antenna patterns for both radars, and the rotation rate of the ASR-11 with its variance.
 - Compares main beam to main beam coupling with the statistical mutual antenna gain (MAG), and adds a bound that holds for any mix of NEXRAD scan modes (Sections 7.11 and 7.12).
-- Records the concerns raised at the 2.7 GHz Retuning LOE meeting of November 4, 2026, and how this revision addresses each one (Section 10).
+- Records the concerns raised at the 2.7 GHz Retuning LOE meeting of November 4, 2026, and how this revision addresses each one (Section 11).
 - Corrects Case 1 of the example script. Revision 3 called it "Radar B, 34 dBi, 90 degrees per second." In Rec. ITU-R M.1464-2 Table 1, Radar B is 33.5 dBi at 75 degrees per second, so Case 1 now uses Radar D (32.8 dBi, 90 degrees per second).
 - Adds the `offaxis_table` antenna type, per-scan maxima with the gains that make each peak, main-beam and sidelobe reference levels, a hand check of the per-scan plateaus, confidence intervals for every percentile, and a 120-hour time series.
 - Walks through the WSR-88D and ASR-11 example in 11 numbered steps, each with the numbers it produces (Section 7).
 - Covers every WSR-88D VCP in operational data from 2024 to 2026 (12, 31, 32, 34, 35, 112, 212, and 215), found by a survey of all WSR-88D sites on six dates (Section 7.6).
 - Runs every option combination the radar allows, 74 modes in all. SAILS with AVSET is the new worst case (Section 7.10).
 - Answers the antenna concerns of the November 4, 2026 meeting: time spent in each pair of pattern regions (main beam, sidelobes, back lobe), how long high coupling lasts, a 120-hour run, a sensitivity section (Section 8), and synchronization with the prior practice stated at the meeting (Section 9).
+- Adds the FAA ASR-9 as a second ATC radar, from Rec. ITU-R M.1464-2 Table 1 Radar B, and compares it with the ASR-11 for every VCP mode (Section 10).
 
 ## Summary of the WSR-88D and ASR-11 example
 
@@ -25,6 +26,7 @@ Changes from revision 3:
 - **Both main beams are on the path together only 0.008% of the time.** For 87% of the time, both antennas point a far sidelobe or the back lobe at the other radar (Section 7.9).
 - **High coupling doesn't last long within a volume, but it can come back every volume.** In 120 hours, no two consecutive ASR-11 revolutions reached 50 dBi. In some hours, 74 ASR-11 revolutions nearly matched the NEXRAD volume time, and a peak came back once per volume; the longest run at 60 dBi or more was six consecutive volumes, 35 minutes (Sections 7.9 and 9.2).
 - **The ASR-11 remote sidelobe level and the path elevation matter most.** A ±3 dB change in the ASR-11 remote sidelobes moves the 99.9% MAG by about 3 dB. A path at 0.5° elevation raises it by 3.5 dB (Section 8).
+- **The ASR-9 gives nearly the same MAG as the ASR-11.** With the M.1464-2 Radar B antenna, the 99.9% and 99.99% MAG are unchanged (43.9 dBi and 45.5 dBi), because both radars use the same remote sidelobe level, and the 99% and 99.999% values are 1.3 dB and 1.4 dB lower. The ASR-9 remote sidelobe level isn't published and is taken from the ASR-11 (Section 10).
 - **The paper baseline is more conservative in the far tail.** The model of the 2.7 GHz link budget working paper (F.1245 patterns, NEXRAD at 3 rpm on the horizon) gives 62.7 dBi at 99.99%, against 45.5 dBi for the worst VCP mode.
 
 ## 1. Purpose and method
@@ -569,7 +571,81 @@ Across volumes, it can. Each cut crosses the path once per volume, so the volume
 
 So the prior practice for radars with different scan rates holds in part. The WSR-88D and ASR-11 rates are different, and within a volume, coupling of 50 dBi or more lasts at most one revolution. But a WSR-88D mode with a steady volume time can lock to a whole number of ASR-11 revolutions, and then the same coupling returns every volume, about every 6 minutes, until the ASR-11 rate drifts or the NEXRAD changes mode. Two facts would settle how often this happens: the FAA rotation-rate tolerance and drift of the ASR-11 (Order JO 6310.30B), and how steady the WSR-88D volume time is in practice. Until then, a link budget that counts repeated hits on the same NEXRAD elevation should use the volume persistence of Step 8, not only the per-revolution statistics.
 
-## 10. Concerns from the November 4, 2026 Retuning LOE meeting
+## 10. The ASR-9 as the ATC radar
+
+The FAA operates two airport surveillance radars in 2.7 GHz to 2.9 GHz: the ASR-11 of Section 7 and the older ASR-9. This section reruns the WSR-88D example with the ASR-9 in place of the ASR-11. The option `opts.atc_radar = "asr9"` selects it in `nexrad_asr11_mag_rev1`, and `example_asr9_rev1.m` runs every VCP mode and compares the two radars.[^36]
+
+### 10.1 ASR-9 inputs
+
+Rec. ITU-R M.1464-2 doesn't name its radars. Radar B in Table 1 is the ASR-9: Annex 2 Section 2 describes Radar B as an airport radar with a 60 NM range, 256 azimuth intervals of about 1.4°, ten pulses at one pulse repetition frequency followed by eight at another, and high-beam and low-beam feed horns. Table 1 gives it a klystron transmitter with 1,320 kW and a 1.03 µs pulse. These match the published ASR-9 description (two coherent processing intervals, a 1.0 µs pulse, about 1.1 MW, high and low beams). The same table gives the values below, and the model uses them as it uses Radar C for the ASR-11.
+
+| Parameter | ASR-9 | ASR-11 (Section 7.1) | Source for the ASR-9 |
+| --- | --- | --- | --- |
+| Peak gain | 33.5 dBi | 34 dBi | M.1464-2 Table 1, Radar B (MIT Lincoln Laboratory ATC-266: about 34 dB) |
+| Azimuth beamwidth | 1.3° | 1.45° | M.1464-2 Table 1, Radar B (Wikipedia and ATC-266: 1.4°) |
+| Elevation beamwidth and pattern | 4.8°, cosecant squared to +30° | Same | M.1464-2 Table 1, Radar B |
+| First sidelobe | +7.3 dBi (−26.2 dB, the same cosine taper) | +9.5 dBi (−24.5 dB) | M.1464-2 Table 1, Radar B |
+| Remote sidelobes | +3.5 dBi | +3.5 dBi | Not given for Radar B; the Radar C value is used (TODO) |
+| Tilt | 0°, model range −2.5° to +2.5° | Same | Not given for Radar B; the Radar C range is used (TODO: site value) |
+| Rotation rate | 12.5 rpm (75 degrees per second) | Same | M.1464-2 Table 1, Radar B; Wikipedia; working paper Table 4.4-1 |
+| Rotation-rate variance | Uniform ±0.5 degrees per second | Same | M.2069-0 drive accuracy (TODO: FAA value) |
+| F.1245 peak gain (paper baseline) | 34 dBi | 34 dBi | Working paper Table 4.4-1 |
+
+ATC-266 describes the ASR-9 and ASR-11 beam patterns as "essentially identical." In the M.1464-2 values the two differ only in peak gain (0.5 dB), azimuth beamwidth (0.15°), and first sidelobe level (2.2 dB). The paper baseline (F.1245 at 34 dBi for both radars, NEXRAD at 3 rpm on the horizon) is the same for the two radars, so it isn't rerun.
+
+### 10.2 Results
+
+The ASR-9 sweep runs the same 74 VCP modes with the same seed and run size as Step 9. The worst mode is the same: VCP 212 with SAILS×3 and AVSET 6.4 at 99.9% and above, and VCP 12 with SAILS×3, AVSET 6.4, and the slow split-cut rate at 99%. The envelope over the 74 modes bounds the MAG for any mix of modes, as in Step 11.[^37]
+
+| Envelope over 74 modes | 99% | 99.9% | 99.99% | 99.999% |
+| --- | --- | --- | --- | --- |
+| ASR-11 (Step 11) | 20.2 dBi | 43.9 dBi | 45.5 dBi | 68.9 dBi |
+| ASR-9 | 18.9 dBi | 43.9 dBi | 45.5 dBi | 67.5 dBi |
+
+For a paired comparison, the code runs both radars at the worst mode for 24 one-hour trials with the same seed. The two runs share every random pointing state and rotation-rate draw, so each difference comes from the ATC radar antenna alone.
+
+| Quantity, VCP 212 SAILS×3 AVSET 6.4 | ASR-11 | ASR-9 | ASR-9 minus ASR-11 |
+| --- | --- | --- | --- |
+| Peak gains, main beam to main beam | 79.5 dBi | 79.0 dBi | −0.5 dB |
+| Main beam to main beam on the path | 76.0 dBi | 75.5 dBi | −0.5 dB |
+| NEXRAD main beam + ATC near sidelobe | 49.2 dBi | 48.5 dBi | −0.6 dB |
+| NEXRAD main beam + ATC back lobe | 45.5 dBi | 45.5 dBi | 0 dB |
+| ATC main beam + NEXRAD near sidelobe | 44.5 dBi | 44.0 dBi | −0.5 dB |
+| ATC main beam + NEXRAD back lobe | 24.5 dBi | 24.0 dBi | −0.5 dB |
+| 99% time-weighted MAG | 20.2 dBi | 18.9 dBi | −1.3 dB |
+| 99.9% time-weighted MAG | 43.9 dBi | 43.9 dBi | 0.0 dB |
+| 99.99% time-weighted MAG | 45.5 dBi | 45.5 dBi | 0.0 dB |
+| 99.999% time-weighted MAG | 68.9 dBi | 67.5 dBi | −1.4 dB |
+| ATC revolutions whose maximum reaches 45 dBi | 11.0% | 11.0% | 0.0 points |
+| Longest run of NEXRAD volumes at 60 dBi or more, 24 h | 4 | 4 | 0 |
+| Time with both main beams on the path | 0.0082% | 0.0081% | −0.0001 points |
+| ATC main-beam region edge (Step 8) | 2.52° | 2.49° | −0.03° |
+
+![Two panels. Left: azimuth patterns of the ASR-11 and ASR-9, nearly the same. Right: MAG exceedance curves of the two radars at the worst mode, which overlap except in the far tail.](figures/fig9_asr9_comparison.png)
+
+*Figure 9. The ASR-9 and ASR-11 give nearly the same MAG; the ASR-9 is lower by up to 1.4 dB in the 99% and 99.999% values. Panel a: azimuth cuts from M.1464-2 Radars B and C. Panel b: exceedance at VCP 212 SAILS×3 AVSET 6.4, 24 hours, same random draws, with the ASR-9 envelope over the 74 modes. Source: `docs/figures/asr9_comparison_rev4.csv` and `asr9_mode_envelope_rev4.csv` (2026).*
+
+The results follow from the pattern regions of Step 8:
+
+- **The 99.9% and 99.99% MAG don't change.** Both come from the NEXRAD main beam at 0.5° on the path while the ATC radar points a remote sidelobe at the NEXRAD (45.5 dBi, Step 8). Both radars use the same +3.5 dBi remote level, so these values are the same. For the ASR-9, M.1464-2 gives no remote level, and the value is the ASR-11's. Section 8 shows that the 99.9% MAG moves about one for one with it, so an ASR-9 remote level would move the ASR-9 99.9% and 99.99% MAG by the same amount.
+- **The 99% MAG is 1.3 dB lower.** At 99%, the level comes from the ATC main beam and its skirt crossing the NEXRAD far sidelobes and back lobe (below the 24.5 dBi of Step 4). The ASR-9 beam is narrower and 0.5 dB weaker, so it spends less time at each gain in that range.
+- **The 99.999% MAG is 1.4 dB lower.** This tail needs both main beams near the path, so the narrower, weaker ASR-9 beam lowers it. The 95% interval of either value spans about 4 dB at 5,000,000 samples (Section 7.13), so the 1.4 dB difference is small next to that uncertainty.
+- **Persistence is the same.** In 24 hours of the worst mode with the ASR-9, no two consecutive ASR-9 revolutions reached 50 dBi. The longest run of consecutive NEXRAD volumes at 60 dBi or more was four volumes (1,415 s, about 24 min), and 76% of such runs lasted one volume (`docs/figures/asr9_persistence_volume_rev4.csv`). The paired ASR-11 run gave the same longest run.
+- **Both main beams are on the path 0.0081% of the time.** Both antennas point a far sidelobe or the back lobe at the other radar 87% of the time (`docs/figures/asr9_lobe_pairs_rev4.csv`).
+
+### 10.3 Synchronization with the ASR-9
+
+The ASR-9 and ASR-11 both rotate at 12.5 rpm. Section 9.2 applies to every pair of them: a pair of ATC radars that falls into alignment can stay aligned for hours, and the drive tolerance alone sets how often. The table adds the ASR-9 rows to the Section 9.2 table, with the same ±0.5 degrees per second placeholder for each drive (`docs/figures/alignment_dwell_rev4.csv`).
+
+| Radar pair | Ratio | Joint period (s) | Window (°) | Probability an aligned episode lasts longer than 10 min | 1 h | 1 day | 30 days |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ASR-9 and ASR-9, both 12.5 rpm | 1:1 | 4.8 | 2.6 | 0.86% | 0.14% | 0.0060% | 0.00020% |
+| ASR-9 and ASR-11, both 12.5 rpm | 1:1 | 4.8 | 2.75 | 0.91% | 0.15% | 0.0064% | 0.00021% |
+| ASR-9 and a whole WSR-88D volume (worst mode, 353.69 s) | 74:1 | 355.2 | 6.86 | 2.3% | 0.38% | 0.016% | 0.00053% |
+
+The narrower ASR-9 beam shortens each window a little. Under the prior practice of Section 9.1, an ASR-9 paired with an ASR-9 or an ASR-11 is an equal-rate pair, for which earlier studies used main beam to main beam. A WSR-88D and an ASR-9 have different rates, but a steady NEXRAD volume time can lock to 74 ASR-9 revolutions as it does to the ASR-11.
+
+## 11. Concerns from the November 4, 2026 Retuning LOE meeting
 
 The meeting reviewed agency comments on revision 2 of the 2.7 GHz link budget working paper. The table lists the concerns that bear on the antennas and the MAG, grouped by topic, and how this revision addresses each one. The "Raised by" column records who spoke at the meeting, from the transcript; it does not state a coordinated agency position.
 
@@ -593,12 +669,13 @@ The meeting reviewed agency comments on revision 2 of the 2.7 GHz link budget wo
 
 The meeting also raised items outside the MAG model, for the link budget working paper: placeholder I/N thresholds, per-link ITM reliability and confidence, ground permittivity, climate settings for each path, aggregate interference, coherent and non-coherent classification, the ASR-11 frequency-pair separation (possibly 60 MHz, not 30 MHz), and ducting.
 
-## 11. Checks done in this review
+## 12. Checks done in this review
 
 These checks test the implementation. They do not validate the model.
 
-- The repository tests ran in MATLAB R2025b: 149 tests in four files (`test_radar_mutual_gain_cdf_rev1.m`, `test_nexrad_asr11_rev1.m`, `test_scripts_rev1.m`, and `test_validation_rev1.m`). None failed. The script tests run every example script, the C# crosscheck, and `report_figures_rev4.m` end to end with small runs. The code targets R2024b; the one call newer than R2024b (`theme`, in `report_figures_rev4.m`) runs only on R2025a or later.
-- MATLAB code coverage over all four test files reached 2,409 of 2,411 lines (99.9%). The two lines not reached are a check in `nexrad_vcp_rev1` that valid option limits can't trigger and a default in `report_figures_rev4` that only a full-size run uses.
+- The repository tests ran in MATLAB R2025b: 152 tests in four files (`test_radar_mutual_gain_cdf_rev1.m`, `test_nexrad_asr11_rev1.m`, `test_scripts_rev1.m`, and `test_validation_rev1.m`). None failed. The script tests run every example script, the C# crosscheck, and `report_figures_rev4.m` end to end with small runs. The code targets R2024b; the one call newer than R2024b (`theme`, in `report_figures_rev4.m`) runs only on R2025a or later.
+- MATLAB code coverage over all four test files reached 2,562 of 2,564 lines (99.9%). The two lines not reached are a check in `nexrad_vcp_rev1` that valid option limits can't trigger and a default in `report_figures_rev4` that only a full-size run uses.
+- Adding the ASR-9 left every ASR-11 result unchanged: a full rerun of `report_figures_rev4.m` reproduced every ASR-11 table in `docs/figures` byte for byte. The ASR-9 tests check each Radar B input, the reference levels by hand (75.49 dBi on the path, 24.0 dBi for the ASR-9 main beam and NEXRAD back lobe), and that the remote sidelobe can't exceed the radar's own first sidelobe.
 - The tests found two defects, both fixed: the envelope built from mode summaries cut its low end short, and an ASR-11 tilt at or below −2.4° put the cosecant-squared start below 0° (now a clear error).
 - The VCP tables reproduce the decoded Level II sequences. VCP 212 with SAILS×1 matches the cut order and volume time of the KLOT, KOAX, and KHGX files within 0.01 s.
 - The mode envelope test draws mixtures of two modes with five weights and checks that each mixture percentile is at or below the envelope. The envelope built from mode summaries equals the one built from the samples.
@@ -617,17 +694,18 @@ These checks test the implementation. They do not validate the model.
 | 99.99 | 62.81 | 500 |
 | 99.999 | 65.99 | 50 |
 
-## 12. Open items
+## 13. Open items
 
-1. **ASR-11 rotation-rate tolerance and drift.** The FAA value in Order JO 6310.30B replaces the ±0.5 degrees per second placeholder. It sets how often a volume lock happens (Section 9.2).
+1. **ASR-11 and ASR-9 rotation-rate tolerance and drift.** The FAA value (for the ASR-11, in Order JO 6310.30B) replaces the ±0.5 degrees per second placeholder. It sets how often a volume lock happens (Section 9.2).
 2. **WSR-88D volume-time stability.** How steady the volume time is in practice decides whether a lock to the ASR-11 lasts (Section 9.2).
 3. **ASR-11 sidelobes.** The +3.5 dBi remote level from M.1464-2 sets the 99.9% and 99.99% MAG one for one (Section 8). A measured pattern would replace it.
-4. **ASR-11 tilt and beams.** The beam tilt of each site and the high-beam pattern are needed. A 0° tilt puts the beam nose on the horizon. The pattern model needs a tilt above −2.4°.
-5. **Path elevation.** The path is horizontal. Takeoff angles from the propagation model for each pair of sites would replace it; Section 8 shows the MAG moves by up to 3.5 dB at 0.5°.
-6. **NEXRAD back lobe.** No measured back-lobe data was found; the model holds −55 dB to 180°. Section 8 shows this doesn't change the 99.9% and higher MAG.
-7. **Prior practice.** The prior-practice values in Section 9.1 come from the meeting, not from the source reports.
-8. **Scope.** The model has no propagation, pathloss, clutter, noise, or interference-to-noise calculation. It gives antenna coupling only, in the far field (beyond 1.38 km for the NEXRAD), with no polarization mismatch loss.
-9. **Input limits.** Statgain needs a peak gain of 10 dBi or more. F.1245 needs a peak gain above G1.
+4. **ASR-9 sidelobes and tilt.** M.1464-2 gives no remote sidelobe level and no tilt range for Radar B, so the model uses the ASR-11 values (+3.5 dBi, −2.5° to +2.5°). The ASR-9 99.9% and 99.99% MAG move one for one with the remote level (Section 10.2). An FAA or manufacturer pattern would replace it.
+5. **ASR-11 tilt and beams.** The beam tilt of each site and the high-beam pattern are needed. A 0° tilt puts the beam nose on the horizon. The pattern model needs a tilt above −2.4°.
+6. **Path elevation.** The path is horizontal. Takeoff angles from the propagation model for each pair of sites would replace it; Section 8 shows the MAG moves by up to 3.5 dB at 0.5°.
+7. **NEXRAD back lobe.** No measured back-lobe data was found; the model holds −55 dB to 180°. Section 8 shows this doesn't change the 99.9% and higher MAG.
+8. **Prior practice.** The prior-practice values in Section 9.1 come from the meeting, not from the source reports.
+9. **Scope.** The model has no propagation, pathloss, clutter, noise, or interference-to-noise calculation. It gives antenna coupling only, in the far field (beyond 1.38 km for the NEXRAD), with no polarization mismatch loss.
+10. **Input limits.** Statgain needs a peak gain of 10 dBi or more. F.1245 needs a peak gain above G1.
 
 ## Appendix A. Code traceability
 
@@ -647,14 +725,17 @@ These checks test the implementation. They do not validate the model.
 | Sector scan | `radar_mutual_gain_cdf_rev1.m`, `sector_az`; `nexrad_asr11_mag_rev1.m`, `scan_maxima` | Known-value tests |
 | Sensitivity sweep | `mag_sensitivity_rev1.m`, `example_sensitivity_rev1.m` | Test, end-to-end script test |
 | Alignment dwell | `alignment_dwell_rev1.m`, `example_asr11_drift_rev1.m` | Closed-form and brute-force tests |
+| ASR-9 inputs (M.1464-2 Radar B) and the ATC radar choice | `nexrad_asr11_mag_rev1.m`, `assumptions` and `fill_opts` (`atc_radar`) | Known-value tests |
+| ASR-9 sweep, envelope, and paired comparison | `example_asr9_rev1.m`, `vcp_mode_cases_rev1.m` | End-to-end script test |
 | Prior practice and near field | `nexrad_asr11_mag_rev1.m`, `assumptions` (source `LOE_20261104`) | Citation test |
 | Figures and tables | `report_figures_rev4.m`; every figure in this report comes from this script | Run |
 
 Files in scope:
 
-- `example_radar_mutual_gain_rev1.m` and `example_nexrad_asr11_rev1.m`: entry points.
+- `example_radar_mutual_gain_rev1.m`, `example_nexrad_asr11_rev1.m`, and `example_asr9_rev1.m`: entry points.
+- `vcp_mode_cases_rev1.m`: the 74 VCP modes and the paper baseline, for both sweeps.
 - `radar_mutual_gain_cdf_rev1.m`: sampling, coupling, statistics.
-- `nexrad_asr11_mag_rev1.m`: WSR-88D and ASR-11 inputs, per-scan maxima, reference levels, sensitivity.
+- `nexrad_asr11_mag_rev1.m`: WSR-88D, ASR-11, and ASR-9 inputs, per-scan maxima, reference levels, sensitivity.
 - `nexrad_vcp_rev1.m`: NEXRAD VCP cut tables.
 - `mag_mode_envelope_rev1.m` and `mag_mode_summary_rev1.m`: envelope over scan modes, from samples or compact summaries.
 - `mag_sensitivity_rev1.m` and `example_sensitivity_rev1.m`: one-at-a-time sensitivity (Section 8).
@@ -688,6 +769,11 @@ Files in scope:
 | Longest run of consecutive volumes at 60 dBi or more, 120 h | 6 (2,122 s) | `persistence_volume_120h_rev4.csv` | six volumes, 35 min |
 | Chance a volume lock lasts more than 1 h | 0.390% | `alignment_dwell_rev4.csv` | 0.39% |
 | 99.9% MAG change for ±3 dB ASR-11 remote sidelobes | −2.92 and +2.95 dB | `sensitivity_sweep_rev4.csv` | about 3 dB |
+| ASR-9 envelope 99%, 99.9%, 99.99%, 99.999% MAG, 74 modes | 18.862, 43.917, 45.490, 67.496 dBi | `asr9_mode_envelope_rev4.csv` | 18.9, 43.9, 45.5, 67.5 dBi |
+| ASR-9 minus ASR-11, 99% and 99.999% MAG, worst mode, 24 h | −1.29 and −1.36 dB | `asr9_comparison_rev4.csv` | 1.3 dB and 1.4 dB lower |
+| ASR-9 main beam to main beam on the path | 75.494 dBi | `asr9_ref_levels_rev4.csv` | 75.5 dBi |
+| ASR-9 longest run of volumes at 60 dBi or more, 24 h | 4 (1,415 s) | `asr9_persistence_volume_rev4.csv` | four volumes, about 24 min |
+| Chance an ASR-9 volume lock lasts more than 1 h | 0.381% | `alignment_dwell_rev4.csv` | 0.38% |
 | Worst-mode 99.999% MAG, 95% interval at 5,000,000 samples | 66.84 to 71.07 dBi | `convergence_rev4.csv` | 66.8 to 71.1 dBi |
 
 ## Appendix C. References
@@ -700,11 +786,12 @@ Files in scope:
 - Unidata, [MetPy](https://unidata.github.io/MetPy/).
 - NSSL, [Errata and supplement to the 1998 WSR-88D polarimetric upgrade report](https://www.nssl.noaa.gov/publications/wsr88d_reports/ERRATA1998Rpt_D3a(WC).pdf).
 - [Recommendation ITU-R M.1849-3](https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1849-3-202302-I!!PDF-E.pdf), February 2023.
-- [Recommendation ITU-R M.1464-2](https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1464-2-201502-I!!PDF-E.pdf), February 2015.
+- [Recommendation ITU-R M.1464-2](https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1464-2-201502-I!!PDF-E.pdf), February 2015 (Table 1, Radars B and C; Annex 2, Section 2).
 - [Recommendation ITU-R M.1851](https://www.itu.int/rec/R-REC-M.1851/en).
 - [Recommendation ITU-R M.2069](https://www.itu.int/rec/R-REC-M.2069/en).
 - Forecast International, [ASR-11 (DASR)](https://www.forecastinternational.com/archive/disp_pdf.cfm?DACH_RECNO=1032), August 2014.
 - M. E. Weber, [FAA Surveillance Radar Data as a Complement to the WSR-88D Network](https://archive.ll.mit.edu/mission/aviation/publications/publication-files/atc-reports/Weber_1999_ATC-266_WW-15318.pdf), MIT Lincoln Laboratory ATC-266, 1999.
+- Wikipedia, [ASR-9](https://en.wikipedia.org/wiki/ASR-9).
 - FAA, [Airport Surveillance Radar (ASR-11)](https://www.faa.gov/air_traffic/technology/asr-11/).
 - FAA, [Order JO 6310.30B, Maintenance Handbook for Airport Surveillance Radar, ASR-11 Facilities](https://www.faa.gov/regulations_policies/orders_notices/index.cfm/go/document.information/documentID/1028067), July 20, 2015.
 - 2.7 GHz Retuning LOE, link budget analysis working paper comment adjudication meeting, transcript, November 4, 2026 (not public).
@@ -746,5 +833,7 @@ Files in scope:
 [^33]: nexrad_asr11_mag_rev1.m, lines 760 to 791 (persistence) | https://github.com/nicklasorte/mutual_antenna_gain/blob/38e19629a610395f903fb845dd5537786d1e4337/nexrad_asr11_mag_rev1.m#L760-L791
 [^34]: mag_sensitivity_rev1.m and example_sensitivity_rev1.m | https://github.com/nicklasorte/mutual_antenna_gain/blob/38e19629a610395f903fb845dd5537786d1e4337/example_sensitivity_rev1.m
 [^35]: example_nexrad_asr11_rev1.m, lines 25 to 73 (option combinations) | https://github.com/nicklasorte/mutual_antenna_gain/blob/38e19629a610395f903fb845dd5537786d1e4337/example_nexrad_asr11_rev1.m#L25-L73
+[^36]: nexrad_asr11_mag_rev1.m, assumptions (ATC radar block, ASR-9 = M.1464-2 Radar B) | https://github.com/nicklasorte/mutual_antenna_gain/blob/52c5b9f1a36b76b54d47690591e5ddfe12da475e/nexrad_asr11_mag_rev1.m#L316-L359
+[^37]: example_asr9_rev1.m and vcp_mode_cases_rev1.m | https://github.com/nicklasorte/mutual_antenna_gain/blob/52c5b9f1a36b76b54d47690591e5ddfe12da475e/example_asr9_rev1.m
 
 **DRAFT//PRE-DECISIONAL**
