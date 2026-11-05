@@ -1,0 +1,8 @@
+mag_choice,mag_dBi,delta_vs_peak_mbmb_dB,time_exceeded_pct,asr_rev_reached_pct
+"Peak gains, main beam to main beam",79.5,0,0,0
+"Main beam to main beam on the path",75.9937910883876,-3.50620891161239,0,0
+"Largest MAG in the time series",74.085279960916,-5.41472003908396,0.0003,0.0333333333333333
+"99% time-weighted MAG",20.1529346648851,-59.3470653351149,1,100
+"99.9% time-weighted MAG",43.9487892448614,-35.5512107551386,0.1,11.0666666666667
+"99.99% time-weighted MAG",45.4915468968248,-34.0084531031752,0.01,10.8333333333333
+"99.999% time-weighted MAG",68.857275279032,-10.642724720968,0.001,0.1
