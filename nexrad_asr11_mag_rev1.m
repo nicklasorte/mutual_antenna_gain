@@ -441,6 +441,12 @@ if opts.asr_tilt_deg < A.asr.tilt_range_deg(1) || opts.asr_tilt_deg > A.asr.tilt
     error("radar_coupling:asrTilt", "asr_tilt_deg must lie in the M.1464-2 Radar C range [%g %g] deg.", ...
         A.asr.tilt_range_deg(1), A.asr.tilt_range_deg(2));
 end
+if opts.asr_pattern == "m1851_csc2" && opts.asr_tilt_deg + A.asr.el_bw_deg/2 <= 0
+    % M.1851-2 Eqs (25)-(27) start the CSC^2 shape at tilt + bw/2, which
+    % must be above 0 deg: tilts at or below -2.4 deg are outside the model.
+    error("radar_coupling:asrTilt", "asr_tilt_deg must be above %g deg for the M.1851-2 CSC^2 pattern (start angle tilt + %g deg must be above 0).", ...
+        -A.asr.el_bw_deg/2, A.asr.el_bw_deg/2);
+end
 scan_a = struct("type", "mech_rotating", "rate_rpm", A.asr.rate_rpm, "tilt_deg", opts.asr_tilt_deg, ...
     "rate_jitter_deg_s", opts.asr_rate_jitter_deg_s, "jitter_mode", opts.asr_jitter_mode);
 sys_a = struct("name", "ASR-11", "tx", ant_a, "rx", ant_a, "scan", scan_a);

@@ -1,6 +1,6 @@
 function tests = test_scripts_rev1
 %TEST_SCRIPTS_REV1 Tests for the example scripts, the C# crosscheck, the
-%   report figure script and merge_overrides_rev1. Each script runs end to
+%   report figure script, merge_overrides_rev1 and peak_label_rev1. Each script runs end to
 %   end with small runs set through a workspace struct example_overrides,
 %   so every line of each script executes. report_figures_rev4 writes to a
 %   temporary folder, not docs/figures.
@@ -71,9 +71,20 @@ for k = 1:height(E)
     verifyGreaterThanOrEqual(tc, E.envelope_dBi(k), max(row) - 1e-9);
 end
 verifyEqual(tc, W.V.case(W.i999), W.env.pct.worst_mode(W.env.pct.pct == 99.9));
-% Results are stored lean: g21 in single, g12 dropped.
-verifyClass(tc, W.res{2}.cdf.g21_dBi, "single");
-verifyEmpty(tc, W.res{2}.cdf.g12_dBi);
+% Results are stored lean: samples only for the paper baseline, VCP 215
+% and the worst mode (rerun with the same seed), in single; g12 dropped.
+i215 = find(W.T.case == "VCP 215");
+iw = 1 + W.i999;
+for i = 1:numel(W.res)
+    verifyEmpty(tc, W.res{i}.cdf.g12_dBi);
+    if ismember(i, [1 i215 iw])
+        verifyClass(tc, W.res{i}.cdf.g21_dBi, "single");
+    else
+        verifyEmpty(tc, W.res{i}.cdf.g21_dBi);
+    end
+end
+% The rerun reproduces the worst mode's sweep samples exactly.
+verifyEqual(tc, prctile(double(W.res{iw}.cdf.g21_dBi), W.summ{iw}.pct(:)), W.summ{iw}.q_dBi, "AbsTol", 1e-5);
 end
 
 function testExampleSensitivity(tc)
@@ -106,11 +117,27 @@ verifyEqual(tc, T{3, ["p_gt_1min", "p_gt_10min", "p_gt_1h", "p_gt_1d", "p_gt_30d
 verifyTrue(tc, issorted(flip(T{1, 7:end})), "longer episodes are less likely");
 end
 
+function testPeakLabelBranches(tc)
+% Every branch of the Figure 5 label: main beam = within 3 dB of the
+% antenna's peak on the path (NEXRAD 41.99 dBi at 0.5 deg; ASR-11 34 dBi).
+P = table([0.5; 0.9], [41.99; 34.14], 'VariableNames', ["el_deg", "nexrad_gain_on_path_dBi"]);
+mk = @(el, gn, ga) table(gn + ga, el, gn, ga, 0.7, 0.3, 'VariableNames', ["max_g21_dBi", ...
+    "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "asr11_gain_at_max_dBi", ...
+    "nexrad_az_off_at_max_deg", "asr11_az_off_at_max_deg"]);
+verifyTrue(tc, startsWith(peak_label_rev1(mk(0.5, 41, 33.8), P, 34), "74.8 dBi: both main beams"));
+verifyTrue(tc, contains(peak_label_rev1(mk(0.9, 26.5, 33.6), P, 34), "ASR-11 main beam + NEXRAD 0.9 deg cut, beam 0.7 deg"));
+verifyTrue(tc, contains(peak_label_rev1(mk(0.5, 41, 20), P, 34), "NEXRAD main beam (0.5 deg cut) + ASR-11 beam 0.3 deg"));
+verifyTrue(tc, endsWith(peak_label_rev1(mk(0.9, 20, 20), P, 34), "both off axis"));
+% A cut missing from the plateau table is never NEXRAD main beam.
+verifyTrue(tc, endsWith(peak_label_rev1(mk(1.8, 10, 20), P, 34), "both off axis"));
+end
+
 function testReportFiguresWritesEveryOutput(tc)
-d = tc.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder;
+d = fullfile(tc.applyFixture(matlab.unittest.fixtures.TemporaryFolderFixture).Folder, "figs");
 ov = small();
-ov.out_dir = d;
-ov.n_h = 2;
+ov.out_dir = d;                                 % created by the script
+ov.n_h = 3;
+ov.long_duration_s = 1200;                      % 1 h in all: peaks above the plateau
 ov.n_list = [1e4 2e4];
 run_script("report_figures_rev4", ov);
 png = "fig" + ["1_antenna_patterns", "2_vcp_schedule", "3_low_tilt_driver", "4_exceedance", ...
@@ -122,12 +149,14 @@ csv = ["vcp_sweep", "ref_levels", "by_elevation", "asr_rev_pct", "sensitivity", 
 for f = [png, csv]
     verifyTrue(tc, isfile(fullfile(d, f)), f);
 end
-S = readtable(fullfile(d, "vcp_sweep_rev4.csv"), "TextType", "string");
+S = readtable(fullfile(d, "vcp_sweep_rev4.csv"), "TextType", "string", "VariableNamingRule", "preserve");
 verifyEqual(tc, height(S), 75);
 C = readtable(fullfile(d, "convergence_rev4.csv"));
 verifyEqual(tc, unique(C.n_samples)', ov.n_list);
 L = readtable(fullfile(d, "lobe_pairs_rev4.csv"));
 verifyEqual(tc, sum(L.time_pct), 100, "AbsTol", 1e-6);
+P = readtable(fullfile(d, "peaks_above_plateau_120h_rev4.csv"));
+verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end
 
 % =========================================================================

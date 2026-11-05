@@ -25,8 +25,8 @@
 %   Titles, captions and sources are in the report text, not the images.
 %   A workspace struct example_overrides makes a small run (tests): its
 %   n_samples, duration_s, n_trials apply to every run, and out_dir, n_h
-%   (hours of the long run) and n_list (convergence sample sizes) replace
-%   the defaults.
+%   (trials of the long run), long_duration_s (seconds per long-run trial)
+%   and n_list (convergence sample sizes) replace the defaults.
 
 example_nexrad_asr11_rev1;          % defines T, V, res, w, i999, i99
 close all;
@@ -62,6 +62,9 @@ o_long = wopt;
 o_long.duration_s = 3600;
 if exist("example_overrides", "var")
     o_long = merge_overrides_rev1(o_long, example_overrides);
+    if isfield(example_overrides, "long_duration_s")
+        o_long.duration_s = example_overrides.long_duration_s;
+    end
 end
 o_long.n_trials = n_h;
 wl = nexrad_asr11_mag_rev1(o_long);
@@ -247,11 +250,11 @@ put_label(ax, 20, R.mag_dBi(1) + 2.5, sprintf("Main beam to main beam, %.1f dBi"
 pk1 = Rv(Rv.max_g21_dBi >= lev_hi, :);
 yoff = [5.5, 1.8, 4.5, 3, 2];
 for k = 1:height(pk1)
-    txt = peak_text(pk1(k, :), P, wl.ref_levels.asr11_gain_dBi(1));
-    ha = "left"; dx = 40;
-    if pk1.t_start_s(k) > 1800
-        ha = "right"; dx = -40;
-    end
+    txt = peak_label_rev1(pk1(k, :), P, wl.ref_levels.asr11_gain_dBi(1));
+    late = pk1.t_start_s(k) > 1800;            % label to the left of late peaks
+    ha = ["left", "right"];
+    ha = ha(late + 1);
+    dx = 40 - 80*late;
     put_label(ax, pk1.t_start_s(k) + dx, pk1.max_g21_dBi(k) + yoff(mod(k - 1, 5) + 1), txt, c.blue, true, ha, "w");
 end
 style(ax, c, sprintf("Time (s), trial %d", j_fig), "Maximum MAG per revolution (dBi)", "");
@@ -342,29 +345,6 @@ save_fig(f, out_dir, "fig8_sensitivity");
 fprintf("Figures and tables written to %s\n", out_dir);
 
 % =========================================================================
-function txt = peak_text(r, P, g_asr_max)
-% Short label: which beams make the peak. "Main beam" = within 3 dB of the
-% antenna's peak gain on the path (the NEXRAD at the cut's tilt).
-g_n_mb = P.nexrad_gain_on_path_dBi(P.el_deg == r.nexrad_el_at_max_deg);
-if isempty(g_n_mb)
-    g_n_mb = NaN;
-end
-n_mb = r.nexrad_gain_at_max_dBi >= g_n_mb - 3;
-a_mb = r.asr11_gain_at_max_dBi >= g_asr_max - 3;
-if n_mb && a_mb
-    txt = sprintf("%.1f dBi: both main beams (NEXRAD %.1f deg cut)", r.max_g21_dBi, r.nexrad_el_at_max_deg);
-elseif a_mb
-    txt = sprintf("%.1f dBi: ASR-11 main beam + NEXRAD %.1f deg cut, beam %.1f deg off path", ...
-        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.nexrad_az_off_at_max_deg));
-elseif n_mb
-    txt = sprintf("%.1f dBi: NEXRAD main beam (%.1f deg cut) + ASR-11 beam %.1f deg off path", ...
-        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.asr11_az_off_at_max_deg));
-else
-    txt = sprintf("%.1f dBi: NEXRAD %.1f deg cut + ASR-11, both off axis", r.max_g21_dBi, r.nexrad_el_at_max_deg);
-end
-end
-
-% -------------------------------------------------------------------------
 function st = state_az(az, tilt)
 z = zeros(numel(az), 1);
 st = struct("mech_az", az(:), "tilt", tilt + z, "steer_az", z, "steer_el", z);
