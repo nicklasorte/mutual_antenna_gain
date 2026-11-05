@@ -13,7 +13,7 @@
 
 clear; close all;
 
-base = struct("seed", 20261105, "n_samples", 2e6, "duration_s", 1800, "n_trials", 2);
+base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);   % M.2069-0: 5e6 samples
 thr = [40 50 60];                                  % per-revolution thresholds (dBi)
 
 % ---- Case list: VCP and scan options (limits from nexrad_vcp_rev1 / ROC)
@@ -82,8 +82,17 @@ disp(T(1, :))
 fprintf("Worst case: p99 %s; p99.9 %s; revolutions >= 50 dBi %s\n", ...
     V.case(i99), V.case(i999), V.case(irev));
 
+% ---- Envelope over all VCP modes: bounds any mix of modes a site uses
+%      (mag_mode_envelope_rev1), so the unknown mode statistics drop out.
+env = mag_mode_envelope_rev1(cellfun(@(r) r.cdf.g21_dBi, res(2:end), "UniformOutput", false), ...
+    V.case', [99 99.9 99.99 99.999]);
+fprintf("\nMode envelope (bound for any mix of the %d VCP modes):\n", height(V));
+disp(env.pct(:, ["pct", "envelope_dBi", "worst_mode"]))
+
 % ---- Detail for the worst mode: assumptions, citations, per-scan maxima
 w = res{1 + i999};
+fprintf("\nSensitivity of the MAG choice, %s:\n", V.case(i999));
+disp(w.sensitivity)
 disp(w.assumptions)
 disp(w.citations(:, ["key", "url"]))
 disp(w.scan_max.by_elevation)

@@ -60,6 +60,13 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       back lobe. Main beam = beam azimuth on the path (NEXRAD
 %                       at its lowest cut); near sidelobe = largest gain at
 %                       >= 2 beamwidths off the path; back lobe = 180 deg.
+%     .sensitivity      table of MAG choices for the sensitivity analysis
+%                       requested at the November 4, 2026 Retuning LOE
+%                       meeting: peak-gain main beam to main beam (Gmax +
+%                       Gmax), main beam to main beam on the path, largest
+%                       time-series MAG, and the 99% to 99.999% MAG. Columns:
+%                       mag_choice, mag_dBi, delta_vs_peak_mbmb_dB,
+%                       time_exceeded_pct, asr_rev_reached_pct
 %     .scan_max.asr_rev      table, one row per ASR-11 revolution: trial,
 %                            rev, t_start_s, rate_deg_s, max_g12_dBi, max_g21_dBi,
 %                            nexrad_el_at_max_deg, complete
@@ -114,9 +121,13 @@ clear cleanup
 % ---- 3. Main-beam / sidelobe reference levels for the CDF plot.
 ref = ref_levels(sys_n, sys_a, opts, cdf, scan_max);
 
+% ---- 4. Sensitivity of the MAG choice against main beam to main beam.
+sens = sensitivity_table(sys_n, sys_a, cdf, ref, scan_max, opts);
+
 out = struct();
 out.cdf = cdf;
 out.ref_levels = ref;
+out.sensitivity = sens;
 out.scan_max = scan_max;
 out.ts_pct = ts_pct;
 out.sys_nexrad = sys_n;
@@ -164,6 +175,27 @@ Rv = S.asr_rev(S.asr_rev.complete, :);
 rev_pct = arrayfun(@(v) 100*mean(Rv.max_g21_dBi >= v - 0.2), g);
 R = table(name, g, g_n, g_a, exceed, rev_pct, 'VariableNames', ["combination", ...
     "mag_dBi", "nexrad_gain_dBi", "asr11_gain_dBi", "time_exceeded_pct", "asr_rev_reached_pct"]);
+end
+
+% -------------------------------------------------------------------------
+function T = sensitivity_table(sys_n, sys_a, cdf, ref, S, opts)
+% MAG choices from most to least conservative, each with its difference
+% from the peak-gain main beam to main beam value (the FAA practice, 2.7
+% GHz Retuning LOE meeting of November 4, 2026). A negative delta is the
+% relief, in dB, that the choice takes relative to that case; the same dB
+% applies one for one to the required path loss.
+g_pk = antenna_prepare_rev1(sys_n.tx).g_max_dBi + antenna_prepare_rev1(sys_a.tx).g_max_dBi;
+q = cdf.pct21(cdf.pct21.pct >= 99, :);
+name = ["Peak gains, main beam to main beam"; "Main beam to main beam on the path"; ...
+    "Largest MAG in the time series"; compose("%g%% time-weighted MAG", q.pct)];
+g = [g_pk; ref.mag_dBi(1); max(S.nexrad_volume.max_g21_dBi); q.gain_dBi];
+exceed = arrayfun(@(v) 100*mean(cdf.g21_dBi >= v), g);
+Rv = S.asr_rev(S.asr_rev.complete, :);
+rev_pct = arrayfun(@(v) 100*mean(Rv.max_g21_dBi >= v - 0.2), g);
+T = table(name, g, g - g_pk, exceed, rev_pct, 'VariableNames', ["mag_choice", ...
+    "mag_dBi", "delta_vs_peak_mbmb_dB", "time_exceeded_pct", "asr_rev_reached_pct"]);
+T.Properties.Description = sprintf("el_path_deg = %g; NEXRAD lowest cut %.1f deg", ...
+    opts.el_path_deg, min(sys_n.scan.tilt_deg));
 end
 
 % -------------------------------------------------------------------------
@@ -451,10 +483,16 @@ S.t_volume_s = t_vol;
 
 % ---- summaries over complete scans
 C = S.nexrad_cut(S.nexrad_cut.complete, :);
-[G, el] = findgroups(C.el_deg);
-S.by_elevation = table(el, splitapply(@numel, C.max_g21_dBi, G), ...
-    splitapply(@median, C.max_g21_dBi, G), splitapply(@max, C.max_g21_dBi, G), ...
-    'VariableNames', ["el_deg", "n_cuts", "median_max_g21_dBi", "max_max_g21_dBi"]);
+vn = ["el_deg", "n_cuts", "median_max_g21_dBi", "max_max_g21_dBi"];
+if isempty(C)
+    % Run shorter than one complete cut: no per-elevation statistics.
+    S.by_elevation = table(zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), 'VariableNames', vn);
+else
+    [G, el] = findgroups(C.el_deg);
+    S.by_elevation = table(el, splitapply(@numel, C.max_g21_dBi, G), ...
+        splitapply(@median, C.max_g21_dBi, G), splitapply(@max, C.max_g21_dBi, G), ...
+        'VariableNames', vn);
+end
 R = S.asr_rev(S.asr_rev.complete, :);
 S.asr_rev_pct = table(opts.pct(:), prctile(R.max_g21_dBi, opts.pct(:)), ...
     'VariableNames', ["pct", "max_g21_dBi"]);

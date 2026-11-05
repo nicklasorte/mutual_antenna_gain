@@ -311,6 +311,49 @@ verifyGreaterThanOrEqual(tc, Rv.max_g21_dBi, R.mag_dBi(5) - 0.2);
 verifyEqual(tc, R.asr_rev_reached_pct(5), 100);
 end
 
+function testSensitivityTable(tc)
+% Peak-gain MB-MB is 45.5 + 34 = 79.5 dBi; every other choice is lower,
+% and the delta column is the difference from it.
+out = quick_run(struct());
+S = out.sensitivity;
+verifyEqual(tc, S.mag_dBi(1), 79.5, "AbsTol", 1e-9);
+verifyEqual(tc, S.delta_vs_peak_mbmb_dB, S.mag_dBi - 79.5, "AbsTol", 1e-12);
+verifyEqual(tc, S.mag_dBi(2), out.ref_levels.mag_dBi(1), "AbsTol", 1e-12);
+verifyLessThanOrEqual(tc, S.mag_dBi(2:end), S.mag_dBi(1));
+q = S.mag_dBi(4:end);
+verifyTrue(tc, issorted(q), "percentile rows increase");
+verifyEqual(tc, S.time_exceeded_pct(1), 0);
+end
+
+function testModeEnvelopeBoundsAnyMixture(tc)
+% Two synthetic modes; the envelope percentile bounds the percentile of
+% every mixture of them.
+rs = RandStream("mrg32k3a", "Seed", 3);
+a = randn(rs, 2e5, 1);
+b = 1 + 3*randn(rs, 2e5, 1);
+env = mag_mode_envelope_rev1({a, b}, ["A", "B"], [90 99 99.9]);
+verifyEqual(tc, env.pct.envelope_dBi, max(prctile(a, [90 99 99.9]'), prctile(b, [90 99 99.9]')), ...
+    "AbsTol", 1e-12);
+verifyEqual(tc, env.pct.worst_mode, ["B"; "B"; "B"]);
+for w = [0 0.1 0.5 0.9 1]
+    k = round(w*2e5);
+    mix = [a(1:k); b(1:2e5-k)];
+    verifyLessThanOrEqual(tc, prctile(mix, [90 99 99.9]'), env.pct.envelope_dBi + 1e-9);
+end
+verifyGreaterThanOrEqual(tc, env.exceed.envelope_exceed_pct, 0);
+verifyTrue(tc, issorted(flipud(env.exceed.envelope_exceed_pct)));
+verifyError(tc, @() mag_mode_envelope_rev1({a}, ["A", "B"]), "radar_coupling:envelopeInput");
+end
+
+function testShortRunHasNoCompleteCuts(tc)
+% 10 s is shorter than any VCP 212 cut pair: no complete cut, empty
+% per-elevation table, no error.
+out = quick_run(struct("duration_s", 10));
+verifyEqual(tc, height(out.scan_max.by_elevation), 0);
+verifyEqual(tc, out.scan_max.by_elevation.Properties.VariableNames, ...
+    {'el_deg', 'n_cuts', 'median_max_g21_dBi', 'max_max_g21_dBi'});
+end
+
 function testPlotFlagDraws(tc)
 f0 = findall(groot, "Type", "figure");
 quick_run(struct("plot_flag", true));
