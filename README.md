@@ -28,7 +28,7 @@ runtests(["test_radar_mutual_gain_cdf_rev1", "test_nexrad_asr11_rev1", ...
     "test_scripts_rev1", "test_validation_rev1"])
 ```
 
-The four test files hold 149 tests and cover 2,352 of 2,353 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev4` end to end with small runs, writing to a temporary folder.
+The four test files hold 149 tests and cover 2,409 of 2,411 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev4` end to end with small runs, writing to a temporary folder.
 
 ## Files
 

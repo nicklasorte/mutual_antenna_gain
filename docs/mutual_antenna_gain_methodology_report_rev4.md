@@ -188,10 +188,11 @@ The ASR-11 beam points at azimuth offset Δaz_A from the path. Its tilt is 0°, 
 | --- | --- |
 | 0° | 34.0 (peak) |
 | 0.725° (half the beamwidth) | 30.9 |
-| 2.9° (two beamwidths, near sidelobe region) | 7.2 |
+| 2.9° (two beamwidths, near sidelobe region) | 7.1 |
+| Largest near sidelobe, 2.9° or more off the path | 7.2 |
 | Far from the path, out to 180° | 3.5 (remote sidelobe floor) |
 
-Source: `docs/figures/asr11_gain_cut_rev4.csv`.
+Source: `docs/figures/asr11_gain_cut_rev4.csv`; the largest near sidelobe is the reference level in `docs/figures/ref_levels_rev4.csv`.
 
 ### 7.5 Step 4: Add the two gains for one pointing state
 
@@ -597,7 +598,7 @@ The meeting also raised items outside the MAG model, for the link budget working
 These checks test the implementation. They do not validate the model.
 
 - The repository tests ran in MATLAB R2025b: 149 tests in four files (`test_radar_mutual_gain_cdf_rev1.m`, `test_nexrad_asr11_rev1.m`, `test_scripts_rev1.m`, and `test_validation_rev1.m`). None failed. The script tests run every example script, the C# crosscheck, and `report_figures_rev4.m` end to end with small runs. The code targets R2024b; the one call newer than R2024b (`theme`, in `report_figures_rev4.m`) runs only on R2025a or later.
-- MATLAB code coverage over all four test files reached 2,352 of 2,353 lines (99.96%). The one line not reached is a check in `nexrad_vcp_rev1` that valid option limits can't trigger.
+- MATLAB code coverage over all four test files reached 2,409 of 2,411 lines (99.9%). The two lines not reached are a check in `nexrad_vcp_rev1` that valid option limits can't trigger and a default in `report_figures_rev4` that only a full-size run uses.
 - The tests found two defects, both fixed: the envelope built from mode summaries cut its low end short, and an ASR-11 tilt at or below −2.4° put the cosecant-squared start below 0° (now a clear error).
 - The VCP tables reproduce the decoded Level II sequences. VCP 212 with SAILS×1 matches the cut order and volume time of the KLOT, KOAX, and KHGX files within 0.01 s.
 - The mode envelope test draws mixtures of two modes with five weights and checks that each mixture percentile is at or below the envelope. The envelope built from mode summaries equals the one built from the samples.
