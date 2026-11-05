@@ -311,6 +311,65 @@ verifyGreaterThanOrEqual(tc, Rv.max_g21_dBi, R.mag_dBi(5) - 0.2);
 verifyEqual(tc, R.asr_rev_reached_pct(5), 100);
 end
 
+function testSensitivityTable(tc)
+% Peak-gain MB-MB is 45.5 + 34 = 79.5 dBi; every other choice is lower,
+% and the delta column is the difference from it.
+out = quick_run(struct());
+S = out.sensitivity;
+verifyEqual(tc, S.mag_dBi(1), 79.5, "AbsTol", 1e-9);
+verifyEqual(tc, S.delta_vs_peak_mbmb_dB, S.mag_dBi - 79.5, "AbsTol", 1e-12);
+verifyEqual(tc, S.mag_dBi(2), out.ref_levels.mag_dBi(1), "AbsTol", 1e-12);
+verifyLessThanOrEqual(tc, S.mag_dBi(2:end), S.mag_dBi(1));
+q = S.mag_dBi(4:end);
+verifyTrue(tc, issorted(q), "percentile rows increase");
+verifyEqual(tc, S.time_exceeded_pct(1), 0);
+end
+
+function testModeEnvelopeBoundsAnyMixture(tc)
+% Two synthetic modes; the envelope percentile bounds the percentile of
+% every mixture of them.
+rs = RandStream("mrg32k3a", "Seed", 3);
+a = randn(rs, 2e5, 1);
+b = 1 + 3*randn(rs, 2e5, 1);
+env = mag_mode_envelope_rev1({a, b}, ["A", "B"], [90 99 99.9]);
+verifyEqual(tc, env.pct.envelope_dBi, max(prctile(a, [90 99 99.9]'), prctile(b, [90 99 99.9]')), ...
+    "AbsTol", 1e-12);
+verifyEqual(tc, env.pct.worst_mode, ["B"; "B"; "B"]);
+for w = [0 0.1 0.5 0.9 1]
+    k = round(w*2e5);
+    mix = [a(1:k); b(1:2e5-k)];
+    verifyLessThanOrEqual(tc, prctile(mix, [90 99 99.9]'), env.pct.envelope_dBi + 1e-9);
+end
+verifyGreaterThanOrEqual(tc, env.exceed.envelope_exceed_pct, 0);
+verifyTrue(tc, issorted(flipud(env.exceed.envelope_exceed_pct)));
+verifyError(tc, @() mag_mode_envelope_rev1({a}, ["A", "B"]), "radar_coupling:envelopeInput");
+end
+
+function testCdfArray(tc)
+% CDF as [percent, MAG dBi], 0 to 100, consistent with the samples.
+out = quick_run(struct("cdf_pct", 0:5:100));
+A = out.cdf.cdf_array21;
+verifySize(tc, A, [21 2]);
+verifyEqual(tc, A(:, 1), (0:5:100)');
+verifyEqual(tc, A(1, 2), min(out.cdf.g21_dBi));
+verifyEqual(tc, A(end, 2), max(out.cdf.g21_dBi));
+verifyTrue(tc, issorted(A(:, 2)));
+verifyEqual(tc, A(A(:, 1) == 50, 2), prctile(out.cdf.g21_dBi, 50));
+d = quick_run(struct()).cdf.cdf_array21;          % default grid includes the tail
+verifyTrue(tc, all(ismember([0 50 99 99.9 99.99 99.999 100], d(:, 1))));
+verifyError(tc, @() quick_run(struct("cdf_pct", [0 50 40])), "radar_coupling:badCdfPct");
+verifyError(tc, @() quick_run(struct("cdf_pct", [0 101])), "radar_coupling:badCdfPct");
+end
+
+function testShortRunHasNoCompleteCuts(tc)
+% 10 s is shorter than any VCP 212 cut pair: no complete cut, empty
+% per-elevation table, no error.
+out = quick_run(struct("duration_s", 10));
+verifyEqual(tc, height(out.scan_max.by_elevation), 0);
+verifyEqual(tc, out.scan_max.by_elevation.Properties.VariableNames, ...
+    {'el_deg', 'n_cuts', 'median_max_g21_dBi', 'max_max_g21_dBi'});
+end
+
 function testPlotFlagDraws(tc)
 f0 = findall(groot, "Type", "figure");
 quick_run(struct("plot_flag", true));
