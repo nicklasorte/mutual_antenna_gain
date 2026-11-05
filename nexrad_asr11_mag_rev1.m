@@ -37,6 +37,19 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       "per_rev" (new offset every revolution)
 %     .el_path_deg      path elevation at both ends (0: horizontal
 %                       line-of-sight path, location-agnostic geometry)
+%     .nexrad_sector_deg  NEXRAD azimuth sector, centered on the ASR-11
+%                       (360: full rotation, the operational VCPs). Below
+%                       360, each cut sweeps the sector once: a bounding
+%                       case for a scan aimed at the ATC radar (2.7 GHz
+%                       Retuning LOE meeting, November 4, 2026). No
+%                       operational sector width is known (TODO).
+%     .nexrad_back_dB   NEXRAD gain below peak at 90 to 180 deg off axis
+%                       (default -55, the NSSL_1998 far level held to 180
+%                       deg; no measured back lobe, TODO). nssl_measured only.
+%     .asr_remote_sl_dBi  ASR-11 remote sidelobe level (default 3.5,
+%                       M.1464-2 Radar C). m1851_csc2 only.
+%     .persist_thr_dBi  thresholds for the persistence table ([40 45 50 55
+%                       60 65 70])
 %     .n_samples        random-mode samples for the CDF (5e6)
 %     .duration_s       time series length per trial (3600)
 %     .n_trials         time series trials (2)
@@ -89,6 +102,19 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                            ASR-11 floor, with predicted and simulated
 %                            share of revolutions reaching each level
 %     .scan_max.ts1          trial 1 samples when opts.keep_ts1 is true
+%     .scan_max.persistence  per threshold: share of complete ASR-11
+%                            revolutions whose maximum reaches it, number
+%                            of runs of consecutive such revolutions, runs
+%                            per hour, mean and longest run (revolutions
+%                            and seconds), and share of runs one
+%                            revolution long
+%     .lobe_pairs       time share and largest MAG for each pair of pattern
+%                       regions (main beam, near sidelobe, far sidelobe,
+%                       back lobe) of the two antennas: time_pct exact from
+%                       the patterns and the time weights (random mode
+%                       pointing is independent), time_pct_ts counted in the
+%                       time series. Region edges are in
+%                       out.lobe_pairs.Properties.UserData.
 %     .scan_max.by_elevation  per NEXRAD elevation: number of complete
 %                            cuts, median and maximum of the cut maxima
 %     .scan_max.asr_rev_pct   percentiles of the per-revolution maxima
@@ -137,10 +163,14 @@ ref = ref_levels(sys_n, sys_a, opts, cdf, scan_max);
 % ---- 4. Sensitivity of the MAG choice against main beam to main beam.
 sens = sensitivity_table(sys_n, sys_a, cdf, ref, scan_max, opts);
 
+% ---- 5. Time share of each pair of pattern regions.
+lobes = lobe_pairs(sys_n, sys_a, opts, scan_max);
+
 out = struct();
 out.cdf = cdf;
 out.ref_levels = ref;
 out.sensitivity = sens;
+out.lobe_pairs = lobes;
 out.scan_max = scan_max;
 out.ts_pct = ts_pct;
 out.sys_nexrad = sys_n;
@@ -253,6 +283,11 @@ A.nex.roc_env_dB = [-29 -29 -40 -40];
 A.nex.f1245_g_max_dBi = 46; % WP_REV3 Table 4.4-1 (F.1245 model)
 A.nex.paper_rate_rpm = 3;   % WP_REV3 Table 4.4-1
 A.nex.paper_tilt_deg = 0;   % WP_REV3 gives no elevation; horizon assumed
+A.nex.dish_m = 8.53;        % ROC_TECH: reflector 8.53 m (28 ft) in diameter
+A.nex.f_MHz = 2850;         % ROC_TECH: gain and beamwidth quoted at 2850 MHz
+% Far-field (Fraunhofer) distance 2 D^2 / lambda: the patterns hold for
+% radar separations beyond it (about 1.38 km at 2850 MHz).
+A.nex.far_field_m = 2*A.nex.dish_m^2/(physconst("LightSpeed")/(A.nex.f_MHz*1e6));
 
 % ---- ASR-11 antenna (M1464 Table 1, Radar C)
 A.asr.g_max_dBi = 34;       % M1464 Radar C (FI_ASR11: > 33.5 dB; WEBER_1999: ~34 dB)
@@ -296,6 +331,16 @@ p = {
 "ASR-11 rotation rate variance", A.asr.rate_jitter_deg_s, "deg/s", "M2069", "Uniform +/-0.5 deg/s drive accuracy; FAA tolerance is in FAA_JO6310_30B (FAA-internal, TODO)"
 "ASR-11 F.1245 peak gain",       A.asr.f1245_g_max_dBi, "dBi", "WP_REV3", "Table 4.4-1"
 "Path elevation",                0, "deg", "", "Location-agnostic horizontal line-of-sight path (study assumption)"
+"NEXRAD far-field distance",     A.nex.far_field_m, "m", "ROC_TECH", "2 D^2/lambda, D = 8.53 m at 2850 MHz; patterns apply to separations beyond this"
+"NEXRAD back lobe (90-180 deg)", -55, "dB", "NSSL_1998", "Far level held to 180 deg; opts.nexrad_back_dB varies it (TODO: measured back lobe)"
+"NEXRAD scan sector",            360, "deg", "LOE_20261104", "Operational VCPs rotate 360 deg; opts.nexrad_sector_deg gives the bounding case aimed at the ATC radar"
+"Prior practice, 1.3 GHz ARSR-4 to ARSR-4", NaN, "", "LOE_20261104", "Main beam to main beam: equal scan rates can drift into synchronization and couple main beam to main beam for long periods (up to about a month). Meeting statement, assumed correct"
+"Prior practice, 1.3 GHz CARSR to CARSR", NaN, "", "LOE_20261104", "Not main beam to main beam: the antennas were synchronized so they do not point at each other. Meeting statement, assumed correct"
+"Prior practice, 1.3 GHz radars with different scan rates", NaN, "", "LOE_20261104", "Not main beam to main beam: no synchronization concern. Meeting statement, assumed correct"
+"Prior practice, earlier 2.7 GHz study", 99.9, "%", "LOE_20261104", "Statistical MAG below 100% (about 99.9%, exact value not recalled at the meeting). Meeting statement, assumed correct"
+"Prior practice, 1.3 GHz SPT model", 99.5, "%", "LOE_20261104", "Statistical MAG at high percentiles (99.5% and above) in the report to the FAA. Meeting statement, assumed correct"
+"Current FAA practice, 2.7 GHz ATC assignments", NaN, "", "LOE_20261104", "Main beam to main beam (FAA). Meeting statement, assumed correct"
+"Commensurate scan rates", NaN, "", "LOE_20261104", "Rates should not be equal or integer multiples (for example 5 and 10 rpm), or beams can stay aligned; see alignment_dwell_rev1"
 "MAG method",                    NaN, "", "M2069", "Annex 1: time-weighted independent pointing (random mode) and time series"
 };
 A.table = cell2table(p, "VariableNames", ["parameter", "value", "unit", "source", "note"]);
@@ -337,6 +382,8 @@ c = {
     "https://www.faa.gov/air_traffic/technology/asr-11/"
 "FAA_JO6310_30B", "FAA Order JO 6310.30B, ""Maintenance Handbook for Airport Surveillance Radar, ASR-11 Facilities,"" 20 July 2015 (standards and tolerances, including antenna rotation rate; accessible only from the FAA network).", ...
     "https://www.faa.gov/regulations_policies/orders_notices/index.cfm/go/document.information/documentID/1028067"
+"LOE_20261104", "2.7 GHz Retuning LOE ad hoc meeting, Link-Budget Analysis Working Paper comment adjudication, 4 November 2026, transcript. Statements by participants on prior practice, recorded as assumptions and not checked against the source reports. Project document, no public URL.", ...
+    ""
 "WP_REV3", "DRAFT 2.7 GHz Link Budget Analysis, Rev3 redlines, 27 Oct 2026, Table 4.4-1 (F.1245 model, 34 and 46 dBi, 12.5 and 3 rpm). Project document, no public URL.", ...
     ""
 };
@@ -348,7 +395,11 @@ function [sys_n, sys_a] = build_systems(A, opts)
 % ---- NEXRAD antenna
 switch opts.nexrad_pattern
     case "nssl_measured"
-        ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, A.nex.nssl_env_deg, A.nex.nssl_env_dB);
+        % Back hemisphere (90 to 180 deg off axis) at opts.nexrad_back_dB;
+        % the default -55 dB leaves the NSSL envelope unchanged.
+        env_deg = [A.nex.nssl_env_deg(1:end-1), 90, 90.001, 180];
+        env_dB = [A.nex.nssl_env_dB(1:end-1), A.nex.nssl_env_dB(end), opts.nexrad_back_dB, opts.nexrad_back_dB];
+        ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, env_deg, env_dB);
     case "roc_spec"
         ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, A.nex.roc_env_deg, A.nex.roc_env_dB);
     case "f1245"
@@ -363,16 +414,22 @@ switch opts.nexrad_scan
         scan_n = struct("type", "mech_rotating", "rate_rpm", A.nex.paper_rate_rpm, ...
             "tilt_deg", A.nex.paper_tilt_deg);
 end
+scan_n.sector_deg = opts.nexrad_sector_deg;     % centered on the ASR-11 (azimuth 0)
+scan_n.sector_center_deg = 0;
 sys_n = struct("name", "WSR-88D", "tx", ant_n, "rx", ant_n, "scan", scan_n);
+% First-sidelobe level that ends the main-beam region (lobe_pairs).
+sys_n.region_sll_dB = struct("nssl_measured", A.nex.nssl_env_dB(1), "roc_spec", A.nex.roc_env_dB(1), ...
+    "f1245", NaN).(opts.nexrad_pattern);
 
 % ---- ASR-11 antenna (low beam, tx = rx)
 switch opts.asr_pattern
     case "m1851_csc2"
+        floor_dB = opts.asr_remote_sl_dBi - A.asr.g_max_dBi;     % default 3.5 dBi -> -30.5 dB
         ant_a = struct("type", "rect", "g_max_dBi", A.asr.g_max_dBi, ...
             "az_bw_deg", A.asr.az_bw_deg, "az_sll_dB", A.asr.az_sll_dB, ...
             "el_bw_deg", A.asr.el_bw_deg, "el_pattern", "csc2", ...
-            "csc2_end_deg", A.asr.csc2_end_deg, "csc2_floor_dB", A.asr.floor_dB, ...
-            "envelope", "peak", "floor_dB", A.asr.floor_dB);
+            "csc2_end_deg", A.asr.csc2_end_deg, "csc2_floor_dB", floor_dB, ...
+            "envelope", "peak", "floor_dB", floor_dB);
     case "f1245"
         ant_a = struct("type", "f1245", "g_max_dBi", A.asr.f1245_g_max_dBi);
 end
@@ -383,6 +440,7 @@ end
 scan_a = struct("type", "mech_rotating", "rate_rpm", A.asr.rate_rpm, "tilt_deg", opts.asr_tilt_deg, ...
     "rate_jitter_deg_s", opts.asr_rate_jitter_deg_s, "jitter_mode", opts.asr_jitter_mode);
 sys_a = struct("name", "ASR-11", "tx", ant_a, "rx", ant_a, "scan", scan_a);
+sys_a.region_sll_dB = struct("m1851_csc2", A.asr.az_sll_dB, "f1245", NaN).(opts.asr_pattern);
 end
 
 % -------------------------------------------------------------------------
@@ -407,7 +465,12 @@ function [S, ts_pct] = scan_maxima(sys_n, sys_a, opts)
 pn = struct("tx", antenna_prepare_rev1(sys_n.tx), "rx", antenna_prepare_rev1(sys_n.rx));
 pa = struct("tx", antenna_prepare_rev1(sys_a.tx), "rx", antenna_prepare_rev1(sys_a.rx));
 [rate_n, el_n] = nexrad_cuts(sys_n.scan);
-dur_n = 360./rate_n;
+sec = opts.nexrad_sector_deg;
+dur_n = sec./rate_n;                            % one revolution or one sector sweep per cut
+E = region_edges(setfield(pn.rx, "region_sll_dB", sys_n.region_sll_dB), ...
+    setfield(pa.tx, "region_sll_dB", sys_a.region_sll_dB), opts);
+lobe_n = zeros(4, 4);                           % time-series sample counts per region pair
+lobe_m = -Inf(4, 4);                            % largest MAG per region pair
 t_vol = sum(dur_n);
 cut_start = [0; cumsum(dur_n(1:end-1))];
 rate_a = 6*sys_a.scan.rate_rpm;
@@ -434,7 +497,13 @@ for j = 1:opts.n_trials
     w = tau - (vol - 1)*t_vol;
     cut = discretize(w, [cut_start; t_vol]);
     cut(isnan(cut)) = numel(dur_n);
-    st_n = state(mod(az0_n + rate_n(cut).*(w - cut_start(cut)), 360), el_n(cut));
+    if sec < 360
+        % Sector centered on the ASR-11 (azimuth 0), swept once per cut.
+        u = mod(az0_n/360*sec + rate_n(cut).*(w - cut_start(cut)), sec);
+        st_n = state(mod(u - sec/2, 360), el_n(cut));
+    else
+        st_n = state(mod(az0_n + rate_n(cut).*(w - cut_start(cut)), 360), el_n(cut));
+    end
     % ASR-11: revolution counted from azimuth 0 (pointing along the link
     % direction 0 deg); one pass of the NEXRAD bearing per revolution.
     % Rate variance, uniform in +/- jitter about 75 deg/s:
@@ -466,6 +535,11 @@ for j = 1:opts.n_trials
     h_counts = h_counts + histcounts(g21, h_edges)';
     offA = wrapTo180(180 - st_a.mech_az);            % ASR-11 beam azimuth off the path
     offN = wrapTo180(0 - st_n.mech_az);              % NEXRAD beam azimuth off the path
+    rN = region_of(offaxis_nexrad(offN, st_n.tilt, e), E.nexrad);
+    rA = region_of(abs(offA), E.asr11);
+    k = sub2ind([4 4], rN, rA);
+    lobe_n = lobe_n + reshape(accumarray(k, 1, [16 1]), 4, 4);
+    lobe_m = max(lobe_m, reshape(accumarray(k, g21, [16 1], @max, -Inf), 4, 4));
     if j == 1 && opts.keep_ts1
         S.ts1 = struct("t_s", t, "g21_dBi", g21, "asr11_gain_dBi", gA, "nexrad_gain_dBi", gN, ...
             "asr11_az_off_deg", offA, "nexrad_az_off_deg", offN, "nexrad_el_deg", el_n(cut));
@@ -506,6 +580,10 @@ S.nexrad_cut = vertcat(cut_tab{:});
 S.nexrad_volume = vertcat(vol_tab{:});
 S.t_rev_s = t_rev;
 S.t_volume_s = t_vol;
+S.lobe_counts = lobe_n;
+S.lobe_max = lobe_m;
+S.region_edges = E;
+S.persistence = persistence(S.asr_rev, opts.persist_thr_dBi, t_rev);
 
 % ---- summaries over complete scans
 C = S.nexrad_cut(S.nexrad_cut.complete, :);
@@ -576,6 +654,129 @@ P.Properties.Description = sprintf("T_rev = %.3f s, T_volume = %.2f s", t_rev, t
 end
 
 % -------------------------------------------------------------------------
+function E = region_edges(pn, pa, opts)
+% Pattern regions of each antenna, by angle from its beam axis toward the
+% other radar:
+%   1 main beam      gain above the first-sidelobe level (NEXRAD -35 dB
+%                    NSSL, -29 dB ROC spec; ASR-11 -24.5 dB, M.1464-2), or
+%                    up to the first null or flat envelope (F.1245)
+%   2 near sidelobe  from there to where the gain first falls to its level
+%                    at 90 deg (the far-sidelobe floor)
+%   3 far sidelobe   from there to 90 deg
+%   4 back lobe      beyond 90 deg
+% The NEXRAD angle is the 3-D off-axis angle (beam tilt included); the
+% ASR-11 angle is the azimuth offset, because its fan beam is broad in
+% elevation (cosecant squared). Edges come from the patterns as modeled.
+x = (0:0.001:180)';
+z = 0*x;
+gn = antenna_gain_rev1(pn, 0, 0, struct("mech_az", -x, "tilt", z, "steer_az", z, "steer_el", z));
+ga = antenna_gain_rev1(pa, 180, opts.el_path_deg, struct("mech_az", 180 - x, ...
+    "tilt", z + opts.asr_tilt_deg, "steer_az", z, "steer_el", z));
+E.nexrad = edges_of(x, gn, pn.region_sll_dB);
+E.asr11 = edges_of(x, ga, pa.region_sll_dB);
+E.names = ["main beam"; "near sidelobe"; "far sidelobe"; "back lobe"];
+end
+
+function e = edges_of(x, g, sll_dB)
+d = diff(g);
+i1 = find(d > 1e-9 | abs(d) < 1e-12, 1);      % first null or flat envelope
+if ~isnan(sll_dB)
+    i1 = min(i1, find(g <= g(1) + sll_dB + 1e-9, 1));   % falls to the first-sidelobe level
+end
+g90 = g(find(x >= 90, 1));
+i2 = find(x > x(i1) & g <= g90 + 0.01, 1);
+e = [x(i1), x(i2), 90];
+end
+
+function r = region_of(a, e)
+% Region number 1 to 4 of angle a (deg) for edges e = [main, near, 90].
+r = 1 + (a > e(1)) + (a > e(2)) + (a > e(3));
+end
+
+function g = offaxis_nexrad(daz, tilt, el_path)
+% Angle between the NEXRAD beam axis (azimuth offset daz, elevation tilt)
+% and the path direction (elevation el_path), deg.
+c = sind(tilt).*sind(el_path) + cosd(tilt).*cosd(el_path).*cosd(daz);
+g = acosd(min(max(c, -1), 1));
+end
+
+% -------------------------------------------------------------------------
+function L = lobe_pairs(sys_n, sys_a, opts, S)
+% Time share of each pair of regions, exact from the patterns: in random
+% mode the two beam azimuths are independent and uniform (the NEXRAD
+% within its sector), and the NEXRAD cut is drawn with its time weight.
+pn = antenna_prepare_rev1(sys_n.rx);
+pa = antenna_prepare_rev1(sys_a.tx);
+E = S.region_edges;
+e = opts.el_path_deg;
+[rate_n, el_n] = nexrad_cuts(sys_n.scan);
+w = (1./rate_n)/sum(1./rate_n);                 % cut time weights (sector cancels)
+sec = opts.nexrad_sector_deg;
+dz = 0.002;
+daz = (-sec/2 + dz/2:dz:sec/2)';                % NEXRAD azimuth off the path
+pN = zeros(4, 1);
+mN = -Inf(4, 1);
+[el_u, ~, iu] = unique(el_n);
+for i = 1:numel(el_u)
+    gN = antenna_gain_rev1(pn, 0, e, state(-daz, el_u(i) + 0*daz));
+    r = region_of(offaxis_nexrad(daz, el_u(i), e), E.nexrad);
+    pN = pN + sum(w(iu == i))*accumarray(r, 1, [4 1])/numel(daz);
+    mN = max(mN, accumarray(r, gN, [4 1], @max, -Inf));
+end
+dA = (-180 + dz/2:dz:180)';                     % ASR-11 azimuth off the path
+gA = antenna_gain_rev1(pa, 180, e, state(180 - dA, sys_a.scan.tilt_deg + 0*dA));
+rA = region_of(abs(dA), E.asr11);
+pA = accumarray(rA, 1, [4 1])/numel(dA);
+mA = accumarray(rA, gA, [4 1], @max, -Inf);
+[jN, jA] = ndgrid(1:4, 1:4);
+P = 100*pN*pA';
+Pts = 100*S.lobe_counts/sum(S.lobe_counts, "all");
+L = table(E.names(jN(:)), E.names(jA(:)), P(:), Pts(:), mN(jN(:)) + mA(jA(:)), S.lobe_max(:), ...
+    'VariableNames', ["nexrad_region", "asr11_region", "time_pct", "time_pct_ts", ...
+    "max_mag_dBi", "max_mag_ts_dBi"]);
+L.Properties.UserData = E;
+L.Properties.Description = sprintf(join(["Region edges (deg from beam axis): NEXRAD %.3f, %.3f, 90 " ...
+    "(3-D off-axis angle); ASR-11 %.3f, %.3f, 90 (azimuth). max_mag_dBi is the sum of each " ...
+    "antenna's largest gain in its region (an upper bound)."], ""), E.nexrad(1:2), E.asr11(1:2));
+end
+
+% -------------------------------------------------------------------------
+function T = persistence(Rv, thr, t_rev)
+% Runs of consecutive complete ASR-11 revolutions whose maximum MAG
+% reaches each threshold (one run = a cluster of high revolutions).
+Rc = Rv(Rv.complete, :);
+n_thr = numel(thr);
+[pct, n_runs, per_h, mean_run, max_run, max_run_s, pct_single] = deal(zeros(n_thr, 1));
+hours = height(Rc)*t_rev/3600;
+for i = 1:n_thr
+    len = [];
+    for j = unique(Rc.trial)'
+        R = Rc(Rc.trial == j, :);
+        hit = R.max_g21_dBi >= thr(i);
+        % consecutive revolution numbers only (complete revs are contiguous)
+        [f, l] = runs(double(hit));
+        k = hit(f);
+        len = [len; l(k) - f(k) + 1]; %#ok<AGROW>
+    end
+    pct(i) = 100*mean(Rc.max_g21_dBi >= thr(i));
+    n_runs(i) = numel(len);
+    per_h(i) = n_runs(i)/hours;
+    if isempty(len)
+        [mean_run(i), max_run(i), pct_single(i)] = deal(0);
+    else
+        mean_run(i) = mean(len);
+        max_run(i) = max(len);
+        pct_single(i) = 100*mean(len == 1);
+    end
+    max_run_s(i) = max_run(i)*t_rev;
+end
+T = table(thr(:), pct, n_runs, per_h, mean_run, max_run, max_run_s, pct_single, ...
+    'VariableNames', ["threshold_dBi", "rev_pct", "n_runs", "runs_per_hour", ...
+    "mean_run_revs", "max_run_revs", "max_run_s", "single_rev_runs_pct"]);
+T.Properties.Description = sprintf("%.1f h of complete ASR-11 revolutions (T_rev = %.3f s)", hours, t_rev);
+end
+
+% -------------------------------------------------------------------------
 function [rate, el] = nexrad_cuts(scan)
 if isfield(scan, "rate_rpm") && ~isempty(scan.rate_rpm)
     rate = 6*scan.rate_rpm;
@@ -621,7 +822,9 @@ end
 d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_deg", Inf, ...
     "cd_rate_deg_s", [], "nexrad_pattern", "nssl_measured", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
-    "el_path_deg", 0, "n_samples", 5e6, "duration_s", 3600, ...
+    "el_path_deg", 0, "nexrad_sector_deg", 360, "nexrad_back_dB", -55, ...
+    "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
+    "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
     "plot_flag", false, "keep_ts1", false, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
 f = fieldnames(d);
@@ -649,10 +852,25 @@ end
 if opts.asr_rate_jitter_deg_s < 0 || opts.asr_rate_jitter_deg_s >= 75
     error("radar_coupling:badJitter", "opts.asr_rate_jitter_deg_s must be in [0, 75) deg/s.");
 end
+if ~isscalar(opts.nexrad_sector_deg) || opts.nexrad_sector_deg <= 0 || opts.nexrad_sector_deg > 360
+    error("radar_coupling:badSector", "opts.nexrad_sector_deg must be a scalar in (0, 360].");
+end
+if opts.nexrad_back_dB ~= -55 && opts.nexrad_pattern ~= "nssl_measured"
+    error("radar_coupling:backNeedsNssl", "opts.nexrad_back_dB applies to nexrad_pattern ""nssl_measured"" only.");
+end
+if opts.nexrad_back_dB > -35
+    error("radar_coupling:badBack", "opts.nexrad_back_dB must be at or below the -35 dB first sidelobe.");
+end
+if opts.asr_remote_sl_dBi ~= 3.5 && opts.asr_pattern ~= "m1851_csc2"
+    error("radar_coupling:remoteNeedsM1851", "opts.asr_remote_sl_dBi applies to asr_pattern ""m1851_csc2"" only.");
+end
+if opts.asr_remote_sl_dBi > 9.5
+    error("radar_coupling:badRemote", "opts.asr_remote_sl_dBi must be at or below the +9.5 dBi first sidelobe.");
+end
 if opts.dt_s <= 0 || opts.dt_s > 0.01
     error("radar_coupling:badDt", "opts.dt_s must be in (0, 0.01] s to resolve the 1.45 deg ASR-11 beam at 75 deg/s.");
 end
-if opts.duration_s/opts.dt_s*opts.n_trials > 2e8
-    error("radar_coupling:tooManySteps", "duration_s/dt_s*n_trials exceeds 2e8 samples.");
+if opts.duration_s/opts.dt_s*opts.n_trials > 5e8   % trials run one at a time; bounds run time
+    error("radar_coupling:tooManySteps", "duration_s/dt_s*n_trials exceeds 5e8 samples.");
 end
 end

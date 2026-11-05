@@ -55,7 +55,14 @@ function out = radar_mutual_gain_cdf_rev1(sys1, sys2, opts)
 %                     rate per elevation step of a volume scan. .rate_rpm
 %                     can be given instead (rate_deg_s = 6*rate_rpm).
 %        .tilt_deg    reflector beam elevation per step (default 0)
-%        .n_rev       revolutions per step (default 1, integers)
+%        .n_rev       revolutions per step (default 1, integers). With a
+%                     sector, sweeps per step.
+%        .sector_deg  azimuth sector width (default 360, full rotation).
+%                     Below 360, each step sweeps the sector once in the
+%                     direction of rotation and restarts at its edge, so a
+%                     step lasts n_rev*sector_deg/|rate|. Elevation-step
+%                     time shares are unchanged by the sector.
+%        .sector_center_deg  sector center azimuth (default 0)
 %        .rate_jitter_deg_s  time_series only: each trial offsets the rate
 %                     by U(-j, +j) deg/s (default 0). M.2069-0 Annex 1
 %                     quotes a +/-0.5 deg/s drive accuracy.
@@ -256,7 +263,7 @@ z = zeros(n, 1);
 st = struct("mech_az", z, "tilt", z, "steer_az", z, "steer_el", z);
 switch scan.type
     case "mech_rotating"
-        st.mech_az = 360*rand(rs, n, 1);
+        st.mech_az = sector_az(scan, scan.sector_deg*rand(rs, n, 1));
         w = scan.step_dur_s/sum(scan.step_dur_s);    % time fraction per step
         if numel(w) > 1
             step = discretize(rand(rs, n, 1), [0; cumsum(w(:))]);
@@ -352,7 +359,7 @@ switch scan.type
             % +/- jitter (M.2069-0 Annex 1 cites +/-0.5 deg/s accuracy).
             dr = scan.rate_jitter_deg_s*(2*rand(rs) - 1);
             scan.rate_deg_s = sign(scan.rate_deg_s).*(abs(scan.rate_deg_s) + dr);
-            scan.step_dur_s = scan.n_rev*360./abs(scan.rate_deg_s);
+            scan.step_dur_s = scan.n_rev*scan.sector_deg./abs(scan.rate_deg_s);
         end
         t_cycle = sum(scan.step_dur_s);
         t0 = t_cycle*rand(rs);
@@ -361,7 +368,13 @@ switch scan.type
         step = discretize(tau, edges);
         step(isnan(step)) = numel(scan.step_dur_s);   % tau == t_cycle edge
         % Integer revolutions per step: azimuth restarts each step mod 360.
-        st.mech_az = mod(az0 + scan.rate_deg_s(step).*(tau - edges(step)), 360);
+        if scan.sector_deg < 360
+            % Sector: position within the sweep, from the leading edge.
+            u = mod(az0/360*scan.sector_deg + abs(scan.rate_deg_s(step)).*(tau - edges(step)), scan.sector_deg);
+            st.mech_az = sector_az(scan, u, sign(scan.rate_deg_s(step)));
+        else
+            st.mech_az = mod(az0 + scan.rate_deg_s(step).*(tau - edges(step)), 360);
+        end
         st.tilt = scan.tilt_deg(step);
         st.tilt = st.tilt(:);
         [st.steer_az, st.steer_el] = steer_time_series(scan, t, rs);
@@ -516,7 +529,12 @@ switch scan.type
         if any(scan.n_rev ~= round(scan.n_rev) | scan.n_rev < 1)
             error("radar_coupling:badNRev", "%s: n_rev must be positive integers.", label);
         end
-        scan.step_dur_s = scan.n_rev*360./abs(scan.rate_deg_s);
+        scan.sector_deg = field_or(scan, "sector_deg", 360);
+        scan.sector_center_deg = field_or(scan, "sector_center_deg", 0);
+        if ~isscalar(scan.sector_deg) || scan.sector_deg <= 0 || scan.sector_deg > 360
+            error("radar_coupling:badSector", "%s: sector_deg must be a scalar in (0, 360].", label);
+        end
+        scan.step_dur_s = scan.n_rev*scan.sector_deg./abs(scan.rate_deg_s);
         scan.rate_jitter_deg_s = field_or(scan, "rate_jitter_deg_s", 0);
         if scan.rate_jitter_deg_s < 0 || scan.rate_jitter_deg_s >= min(abs(scan.rate_deg_s))
             error("radar_coupling:badJitter", "%s: rate_jitter_deg_s must be >= 0 and below the slowest rate.", label);
@@ -609,6 +627,9 @@ if scan1.type ~= "mech_rotating" || scan2.type ~= "mech_rotating" ...
     error("radar_coupling:syncNeedsEqualRates", ...
         "Synchronized scanning needs two mech_rotating radars with one equal rate (same sign).");
 end
+if scan1.sector_deg < 360 || scan2.sector_deg < 360
+    error("radar_coupling:syncSector", "Synchronized scanning needs full 360 deg rotation (no sector_deg).");
+end
 if scan1.beam_mode == "random" || scan2.beam_mode == "random"
     error("radar_coupling:syncRandomBeam", ...
         "Synchronized scanning does not support random beam steering; use beam_mode ""fixed"".");
@@ -643,6 +664,20 @@ if isfinite(geom.joint_period_s)
         join(["Rotation rates are in a %d:%d ratio; the pointing pair repeats every %.1f s. " ...
         "Random mode assumes the rates drift apart. Check with opts.mode = ""time_series"" " ...
         "and scan.rate_jitter_deg_s."], ""), geom.ratio(1), geom.ratio(2), geom.joint_period_s);
+end
+end
+
+% -------------------------------------------------------------------------
+function az = sector_az(scan, u, sgn)
+% Azimuth at distance u (0 to sector_deg) into the sector sweep. A full
+% 360 deg sector is the ordinary rotation (u is the azimuth).
+if nargin < 3
+    sgn = 1;
+end
+if scan.sector_deg >= 360
+    az = mod(u, 360);
+else
+    az = mod(scan.sector_center_deg + sgn.*(u - scan.sector_deg/2), 360);
 end
 end
 

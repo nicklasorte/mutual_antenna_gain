@@ -582,6 +582,29 @@ classdef test_radar_mutual_gain_cdf_rev1 < matlab.unittest.TestCase
             testCase.verifyEqual(out.events12.mean_duration_s, 2/36, "AbsTol", 2*out.opts.dt_s);
         end
 
+        function sectorScanKnownValues(testCase)
+            % Known values: a 2 deg beam sweeping a 20 deg sector at 36
+            % deg/s passes the other radar once per 20/36 s sweep, so 180
+            % times in 100 s, each pass about 2/36 s long. Random mode puts
+            % the beam within +/-1 deg of the path 2/20 of the time, 18
+            % times the full-rotation share.
+            [s1, s2] = pencil_vs_flat();
+            s1.scan.sector_deg = 20;
+            o = struct('seed', 4, 'mode', 'time_series', 'duration_s', 100, ...
+                'n_trials', 1, 'event_thresh_dBi', 40 - 3);
+            out = radar_mutual_gain_cdf_rev1(s1, s2, o);
+            testCase.verifyEqual(out.events12.n_events, 180, "AbsTol", 1);
+            testCase.verifyEqual(out.events12.mean_duration_s, 2/36, "AbsTol", 2*out.opts.dt_s);
+            r = radar_mutual_gain_cdf_rev1(s1, s2, quick_opts(3));
+            [f1, f2] = pencil_vs_flat();
+            f = radar_mutual_gain_cdf_rev1(f1, f2, quick_opts(3));
+            p_sec = mean(r.g12_dBi >= max(r.g12_dBi) - 3);
+            p_full = mean(f.g12_dBi >= max(f.g12_dBi) - 3);
+            testCase.verifyEqual(p_sec/p_full, 18, "RelTol", 0.1);
+            s1.scan.sector_deg = 0;
+            testCase.verifyError(@() radar_mutual_gain_cdf_rev1(s1, s2, quick_opts(3)), "radar_coupling:badSector");
+        end
+
         function rpmEqualsDegPerSecond(testCase)
             % rate_rpm = 12.5 is 75 deg/s.
             [s1, s2] = two_radars(75, 90.3);
