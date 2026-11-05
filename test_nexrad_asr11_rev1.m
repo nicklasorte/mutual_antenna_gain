@@ -561,7 +561,7 @@ verifyLessThanOrEqual(tc, L.max_mag_ts_dBi(isfinite(L.max_mag_ts_dBi)), ...
 end
 
 function testPersistenceConsistent(tc)
-out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 600));
+out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 1500));
 P = out.scan_max.persistence;
 R = out.scan_max.asr_rev(out.scan_max.asr_rev.complete, :);
 for i = 1:height(P)
@@ -574,6 +574,14 @@ verifyTrue(tc, issorted(flip(P.rev_pct)));
 % NEXRAD/ASR-11: each cut crosses the path once, so a 70 dBi revolution
 % (NEXRAD main beam needed) is never followed by another.
 verifyLessThanOrEqual(tc, P.max_run_revs(P.threshold_dBi == 70), 1);
+% Volume runs: the same bookkeeping per complete NEXRAD volume.
+Q = out.scan_max.persistence_volume;
+V = out.scan_max.nexrad_volume(out.scan_max.nexrad_volume.complete, :);
+for i = 1:height(Q)
+    n_hit = sum(V.max_g21_dBi >= Q.threshold_dBi(i));
+    verifyEqual(tc, Q.vol_pct(i), 100*n_hit/height(V), "AbsTol", 1e-9);
+    verifyEqual(tc, Q.n_runs(i)*Q.mean_run_vols(i), n_hit, "AbsTol", 1e-9);
+end
 end
 
 function testSectorScan(tc)

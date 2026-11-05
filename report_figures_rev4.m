@@ -14,6 +14,7 @@
 %     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
 %     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
 %     persistence_120h_rev4.csv   runs of consecutive high ASR-11 revolutions
+%     persistence_volume_120h_rev4.csv  runs of consecutive high NEXRAD volumes
 %     sensitivity_sweep_rev4.csv  one-at-a-time sensitivity (example_sensitivity_rev1)
 %     alignment_dwell_rev4.csv    equal and multiple scan rates (example_asr11_drift_rev1)
 %     vcp_sweep_rev4.csv          sweep table (all modes)
@@ -88,6 +89,7 @@ writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
 writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev4.csv"));
 writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev4.csv"));
 writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev4.csv"));
+writetable(wl.scan_max.persistence_volume, fullfile(out_dir, "persistence_volume_120h_rev4.csv"));
 pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
     "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
     "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
@@ -243,22 +245,24 @@ put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe
 put_label(ax, 3580, lev09 - 2.2, sprintf("NEXRAD main beam at 0.9 deg + ASR-11 back lobe, %.1f dBi", lev09), c.dark, false, "right", "w");
 put_label(ax, 3580, R.mag_dBi(3) - 2.2, sprintf("NEXRAD main beam at 0.5 deg + ASR-11 back lobe, %.1f dBi (%.1f%% of revolutions)", ...
     R.mag_dBi(3), P.simulated_rev_pct(P.el_deg == 0.5)), c.dark, false, "right", "w");
-put_label(ax, 20, R.mag_dBi(1) + 2.5, sprintf("Main beam to main beam, %.1f dBi", R.mag_dBi(1)), c.dark, false, "left", "w");
+put_label(ax, 3580, R.mag_dBi(1) + 1.6, sprintf("Main beam to main beam on the path, %.1f dBi", R.mag_dBi(1)), c.dark, false, "right", "w");
 % Label every peak between the 45.5 dBi plateau and main beam to main beam.
 % Main beam = within 3 dB of that antenna's peak gain on the path (NEXRAD at
 % the cut's tilt).
 pk1 = Rv(Rv.max_g21_dBi >= lev_hi, :);
-yoff = [5.5, 1.8, 4.5, 3, 2];
-for k = 1:height(pk1)
-    txt = peak_label_rev1(pk1(k, :), P, wl.ref_levels.asr11_gain_dBi(1));
-    late = pk1.t_start_s(k) > 1800;            % label to the left of late peaks
-    ha = ["left", "right"];
-    ha = ha(late + 1);
-    dx = 40 - 80*late;
-    put_label(ax, pk1.t_start_s(k) + dx, pk1.max_g21_dBi(k) + yoff(mod(k - 1, 5) + 1), txt, c.blue, true, ha, "w");
+% Mark every peak above the plateau; letter the three largest and explain
+% them in a key (the full list is in peaks_above_plateau_120h_rev4.csv).
+plot(ax, pk1.t_start_s, pk1.max_g21_dBi, "o", "Color", c.purple, "MarkerFaceColor", c.purple, "MarkerSize", 3.5);
+[~, o3] = sort(pk1.max_g21_dBi, "descend");
+o3 = o3(1:min(3, numel(o3)));
+for k = 1:numel(o3)
+    text(ax, pk1.t_start_s(o3(k)), pk1.max_g21_dBi(o3(k)) + 1.6, char(96 + k), "Color", c.purple, ...
+        "FontName", "Times New Roman", "FontSize", 9, "FontWeight", "bold", "HorizontalAlignment", "center");
+    txt = peak_label_rev1(pk1(o3(k), :), P, wl.ref_levels.asr11_gain_dBi(1));
+    put_label(ax, 20, 83 - 3.2*k, sprintf("%c  %s, t = %.0f s", 96 + k, txt, pk1.t_start_s(o3(k))), c.purple, false, "left", "w");
 end
 style(ax, c, sprintf("Time (s), trial %d", j_fig), "Maximum MAG per revolution (dBi)", "");
-ylim(ax, [15 85]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
+ylim(ax, [15 88]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
 % ---- Figure 6: anatomy of the two largest peaks in trial j_fig ---------------
@@ -335,8 +339,8 @@ xline(ax, 0, "-", "Color", c.dark, "LineWidth", 0.8);
 ax.YTick = flip(yy);
 ax.YTickLabel = flip(Ts.group + ": " + Ts.label);
 xr = max(abs([Ts.d99_9_dB; Ts.d99_999_dB]));
-put_label(ax, xr*0.98, n_s + 0.8, "99.9%", c.blue, true, "right");
-put_label(ax, xr*0.98, n_s + 0.4, "99.999%", c.gray, false, "right");
+put_label(ax, -xr*0.98, n_s + 0.8, "Upper line of each pair: 99.9%", c.blue, true, "left");
+put_label(ax, -xr*0.98, n_s + 0.35, "Lower line: 99.999%", c.gray, false, "left");
 style(ax, c, "Change in MAG from the baseline (dB)", "", "");
 ylim(ax, [0.4 n_s + 1.1]); xlim(ax, [-xr - 1, xr + 1]);
 ax.YGrid = "off";

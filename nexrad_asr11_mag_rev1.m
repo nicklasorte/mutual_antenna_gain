@@ -112,6 +112,10 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                            per hour, mean and longest run (revolutions
 %                            and seconds), and share of runs one
 %                            revolution long
+%     .scan_max.persistence_volume  the same per complete NEXRAD volume
+%                            (columns vol_pct, mean_run_vols, max_run_vols,
+%                            single_vol_runs_pct): high coupling that comes
+%                            back once per volume
 %     .lobe_pairs       time share and largest MAG for each pair of pattern
 %                       regions (main beam, near sidelobe, far sidelobe,
 %                       back lobe) of the two antennas: time_pct exact from
@@ -594,7 +598,8 @@ S.t_volume_s = t_vol;
 S.lobe_counts = lobe_n;
 S.lobe_max = lobe_m;
 S.region_edges = E;
-S.persistence = persistence(S.asr_rev, opts.persist_thr_dBi, t_rev);
+S.persistence = persistence(S.asr_rev, opts.persist_thr_dBi, t_rev, "rev");
+S.persistence_volume = persistence(S.nexrad_volume, opts.persist_thr_dBi, t_vol, "vol");
 
 % ---- summaries over complete scans
 C = S.nexrad_cut(S.nexrad_cut.complete, :);
@@ -752,9 +757,12 @@ L.Properties.Description = sprintf(join(["Region edges (deg from beam axis): NEX
 end
 
 % -------------------------------------------------------------------------
-function T = persistence(Rv, thr, t_rev)
-% Runs of consecutive complete ASR-11 revolutions whose maximum MAG
-% reaches each threshold (one run = a cluster of high revolutions).
+function T = persistence(Rv, thr, t_rev, unit)
+% Runs of consecutive complete scans (ASR-11 revolutions, unit "rev", or
+% NEXRAD volumes, unit "vol") whose maximum MAG reaches each threshold
+% (one run = a cluster of high scans). Volume runs catch high coupling
+% that comes back once per volume, which happens when a whole number of
+% ASR-11 revolutions nearly equals the volume time.
 Rc = Rv(Rv.complete, :);
 n_thr = numel(thr);
 [pct, n_runs, per_h, mean_run, max_run, max_run_s, pct_single] = deal(zeros(n_thr, 1));
@@ -782,9 +790,9 @@ for i = 1:n_thr
     max_run_s(i) = max_run(i)*t_rev;
 end
 T = table(thr(:), pct, n_runs, per_h, mean_run, max_run, max_run_s, pct_single, ...
-    'VariableNames', ["threshold_dBi", "rev_pct", "n_runs", "runs_per_hour", ...
-    "mean_run_revs", "max_run_revs", "max_run_s", "single_rev_runs_pct"]);
-T.Properties.Description = sprintf("%.1f h of complete ASR-11 revolutions (T_rev = %.3f s)", hours, t_rev);
+    'VariableNames', ["threshold_dBi", unit + "_pct", "n_runs", "runs_per_hour", ...
+    "mean_run_" + unit + "s", "max_run_" + unit + "s", "max_run_s", "single_" + unit + "_runs_pct"]);
+T.Properties.Description = sprintf("%.1f h of complete scans (scan period %.3f s)", hours, t_rev);
 end
 
 % -------------------------------------------------------------------------

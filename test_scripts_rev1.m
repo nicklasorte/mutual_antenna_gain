@@ -92,6 +92,7 @@ W = run_script("example_sensitivity_rev1", small());
 T = W.Tsens;
 verifyEqual(tc, height(T), 19);
 verifyEqual(tc, T.group(1), "Baseline");
+verifyTrue(tc, all(T.max_run_45_vols >= 0));
 verifyEqual(tc, T.d99_9_dB(1), 0);
 verifyTrue(tc, all(ismember(["NEXRAD pattern", "NEXRAD back lobe", "ASR-11 pattern", ...
     "ASR-11 remote sidelobe", "ASR-11 tilt", "Path elevation", "ASR-11 rate tolerance", ...
@@ -109,12 +110,18 @@ end
 function testExampleDrift(tc)
 W = run_script("example_asr11_drift_rev1", struct());
 T = W.Tdrift;
-verifyEqual(tc, height(T), 3);
-verifyEqual(tc, T.ratio, ["1:1"; "2:1"; "6:1"]);
+verifyEqual(tc, height(T), 4);
+verifyEqual(tc, T.ratio, ["1:1"; "2:1"; "6:1"; "74:1"]);
 verifyEqual(tc, T.nominal_episode_s(1:2), [Inf; Inf]);
 verifyEqual(tc, T.nominal_episode_s(3), 360/12.524, "RelTol", 1e-12, "capped at one NEXRAD cut");
 verifyEqual(tc, T{3, ["p_gt_1min", "p_gt_10min", "p_gt_1h", "p_gt_1d", "p_gt_30d"]}, zeros(1, 5));
 verifyTrue(tc, issorted(flip(T{1, 7:end})), "longer episodes are less likely");
+% Volume lock: 74 ASR-11 revolutions ~ one 353.7 s volume. The ASR-11
+% offset is uniform on +/-0.5 deg/s and delta = delta0 + d1, so for a
+% window inside the range P(T_ep > t) = 2*(W/t)/1.
+W = T.window_deg(4);
+verifyEqual(tc, W, 1.45 + 74*0.925*(360/W_vol())/12.524, "RelTol", 1e-9);
+verifyEqual(tc, T.p_gt_1h(4), 2*W/3600, "RelTol", 1e-9);
 end
 
 function testPeakLabelBranches(tc)
@@ -143,7 +150,7 @@ run_script("report_figures_rev4", ov);
 png = "fig" + ["1_antenna_patterns", "2_vcp_schedule", "3_low_tilt_driver", "4_exceedance", ...
     "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity"] + ".png";
 csv = ["vcp_sweep", "ref_levels", "by_elevation", "asr_rev_pct", "sensitivity", "plateaus", ...
-    "asr_rev_pct_120h", "lobe_pairs", "persistence_120h", "peaks_above_plateau_120h", ...
+    "asr_rev_pct_120h", "lobe_pairs", "persistence_120h", "persistence_volume_120h", "peaks_above_plateau_120h", ...
     "rev_exceedance_120h", "convergence", "mode_envelope", "sensitivity_sweep", ...
     "alignment_dwell", "cdf_array", "mbmb_vs_statistical"] + "_rev4.csv";
 for f = [png, csv]
@@ -160,6 +167,10 @@ verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end
 
 % =========================================================================
+function v = W_vol()
+v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;
+end
+
 function o = small()
 o = struct("n_samples", 2e4, "duration_s", 60, "n_trials", 1);
 end
