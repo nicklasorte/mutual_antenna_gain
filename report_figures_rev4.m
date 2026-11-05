@@ -10,6 +10,10 @@
 %     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, the
 %                                 trial with the most peaks above the 45.5 dBi plateau)
 %     fig8_sensitivity.png        MAG change for each antenna and scan assumption
+%     fig9_asr9_comparison.png    ASR-9 and ASR-11 azimuth patterns and exceedance
+%     asr9_*_rev4.csv             ASR-9 sweep, envelope, comparison with the ASR-11,
+%                                 reference levels, lobe pairs, persistence, MAG
+%                                 choices and assumptions (example_asr9_rev1)
 %     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
 %     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
 %     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
@@ -22,7 +26,7 @@
 %     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
 %     cdf_array_rev4.csv (CDF arrays: percent 0-100 and MAG dBi)
 %     Tables typed in the report, exported here so every number has a file:
-%     case1_percentiles_rev4.csv  Case 1 of example_radar_mutual_gain_rev1 (Section 11)
+%     case1_percentiles_rev4.csv  Case 1 of example_radar_mutual_gain_rev1 (Section 12)
 %     vcp_table_rev4.csv          VCP use, cuts, volume time, time at 0.5 deg (Step 5)
 %     worst_mode_weights_rev4.csv time weights of the worst mode by elevation (Step 5)
 %     nexrad_gain_by_cut_rev4.csv NEXRAD gain toward the ASR-11, beam azimuth on the path (Step 2)
@@ -37,7 +41,7 @@
 %   (trials of the long run), long_duration_s (seconds per long-run trial)
 %   and n_list (convergence sample sizes) replace the defaults.
 
-% ---- Case 1 of example_radar_mutual_gain_rev1 (Section 11 table). It runs
+% ---- Case 1 of example_radar_mutual_gain_rev1 (Section 12 table). It runs
 %      first, because each example script clears the workspace except
 %      example_overrides.
 example_radar_mutual_gain_rev1;
@@ -135,6 +139,21 @@ example_sensitivity_rev1;           % defines Tsens
 writetable(Tsens, fullfile(out_dir, "sensitivity_sweep_rev4.csv"));
 example_asr11_drift_rev1;           % defines Tdrift
 writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev4.csv"));
+
+% ---- ASR-9 (M.1464-2 Radar B): every VCP mode, envelope, and the paired
+%      comparison with the ASR-11 at the ASR-9's worst mode
+asr9_base = struct("seed", base.seed, "n_samples", base.n_samples, ...
+    "duration_s", base.duration_s, "n_trials", base.n_trials);
+example_asr9_rev1;                  % defines T9, env9, w9, w11, Tcmp9, cmp9_label
+writetable(T9, fullfile(out_dir, "asr9_vcp_sweep_rev4.csv"));
+writetable(env9.pct, fullfile(out_dir, "asr9_mode_envelope_rev4.csv"));
+writetable(Tcmp9, fullfile(out_dir, "asr9_comparison_rev4.csv"));
+writetable(w9.ref_levels, fullfile(out_dir, "asr9_ref_levels_rev4.csv"));
+writetable(w9.lobe_pairs, fullfile(out_dir, "asr9_lobe_pairs_rev4.csv"));
+writetable(w9.scan_max.persistence, fullfile(out_dir, "asr9_persistence_rev4.csv"));
+writetable(w9.scan_max.persistence_volume, fullfile(out_dir, "asr9_persistence_volume_rev4.csv"));
+writetable(w9.sensitivity, fullfile(out_dir, "asr9_sensitivity_rev4.csv"));
+writetable(w9.assumptions, fullfile(out_dir, "asr9_assumptions_rev4.csv"));
 
 c = struct("dark", [22 51 83]/255, "blue", [86 116 196]/255, ...
     "purple", [110 79 146]/255, "gray", [138 141 145]/255, "grid", [230 230 230]/255);
@@ -356,6 +375,30 @@ style(ax, c, "Change in MAG from the baseline (dB)", "", "");
 ylim(ax, [0.4 n_s + 1.1]); xlim(ax, [-xr - 1, xr + 1]);
 ax.YGrid = "off";
 save_fig(f, out_dir, "fig8_sensitivity");
+
+% ---- Figure 9: ASR-9 and ASR-11, azimuth patterns and exceedance ------------
+f = new_fig(6.5, 3.0);
+tl = tiledlayout(f, 1, 2, "TileSpacing", "compact", "Padding", "compact");
+ax = nexttile(tl);
+p11 = antenna_prepare_rev1(w11.sys_asr11.tx);
+p9 = antenna_prepare_rev1(w9.sys_asr11.tx);
+semilogx(ax, x, antenna_gain_rev1(p11, 0, 0, st), "-", "Color", c.gray, "LineWidth", 1.4); hold(ax, "on");
+semilogx(ax, x, antenna_gain_rev1(p9, 0, 0, st), "-", "Color", c.blue, "LineWidth", 2);
+put_label(ax, 0.012, 12, "ASR-11, M.1464-2 Radar C", c.gray, false);
+put_label(ax, 0.012, 7, "ASR-9, M.1464-2 Radar B", c.blue, true);
+style(ax, c, "Azimuth offset (deg, log scale)", "Gain (dBi)", "a. Azimuth patterns");
+ylim(ax, [-5 40]); xlim(ax, [0.01 180]);
+ax = nexttile(tl);
+semilogy(ax, w11.cdf.cdf21.gain_dBi, w11.cdf.cdf21.exceed_pct, "-", "Color", c.gray, "LineWidth", 1.4); hold(ax, "on");
+semilogy(ax, w9.cdf.cdf21.gain_dBi, w9.cdf.cdf21.exceed_pct, "-", "Color", c.blue, "LineWidth", 2);
+semilogy(ax, env9.exceed.gain_dBi, max(env9.exceed.envelope_exceed_pct, 1e-6), "--", "Color", c.dark, "LineWidth", 1.0);
+put_label(ax, -20, 3e-4, "Dashed: ASR-9 envelope of all " + height(T9) + " VCP modes", c.dark, false);
+put_label(ax, 78, 30, "ASR-9 (blue), ASR-11 (gray)", c.dark, false, "right");
+put_label(ax, 78, 10, string(cmp9_label), c.dark, false, "right");
+style(ax, c, "Mutual antenna gain (dBi)", "Time exceeded (%, log scale)", "b. Exceedance");
+ylim(ax, [1e-4 100]); xlim(ax, [-25 82]);
+ax.YGrid = "on";
+save_fig(f, out_dir, "fig9_asr9_comparison");
 
 % ---- Tables typed in the report (Steps 2, 3 and 5) -------------------------
 vl = [35 31 32 34 215 212 12 112];

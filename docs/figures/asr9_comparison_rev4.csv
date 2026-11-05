@@ -1,0 +1,16 @@
+quantity,asr11,asr9,asr9_minus_asr11
+"Peak gains, main beam to main beam (dBi)",79.5,79,-0.5
+"Main beam to main beam on the path (dBi)",75.9937910883876,75.4937910883876,-0.5
+"NEXRAD main beam + ATC near sidelobe (dBi)",49.1668075457075,48.5456305914991,-0.621176954208472
+"NEXRAD main beam + ATC back lobe (dBi)",45.4937910883876,45.4937910883876,0
+"ATC main beam + NEXRAD near sidelobe (dBi)",44.5,44,-0.5
+"ATC main beam + NEXRAD back lobe (dBi)",24.5,24,-0.5
+"99% time-weighted MAG (dBi)",20.1529346648851,18.85841472494,-1.29451993994504
+"99.9% time-weighted MAG (dBi)",43.9487892448614,43.9172590241337,-0.0315302207276886
+"99.99% time-weighted MAG (dBi)",45.4915468968248,45.4899662371465,-0.00158065967828236
+"99.999% time-weighted MAG (dBi)",68.857275279032,67.4956008049018,-1.36167447413015
+"Revolutions reaching 45 dBi (%)",11.0313751668892,11.0258121940365,-0.0055629728526938
+"Revolutions reaching 60 dBi (%)",0.333778371161549,0.328215398308856,-0.00556297285269247
+"Longest run of volumes reaching 60 dBi",4,4,0
+"Time with both main beams on the path (%)",0.00821977007615672,0.0081219932711271,-9.77768050296202e-05
+"ATC main-beam region edge (deg)",2.522,2.492,-0.0300000000000002

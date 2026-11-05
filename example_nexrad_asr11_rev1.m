@@ -19,57 +19,9 @@ if exist("example_overrides", "var")
 end
 thr = [40 50 60];                                  % per-revolution thresholds (dBi)
 
-% ---- Case list: VCP and scan options (limits from nexrad_vcp_rev1 / ROC)
-c = {};
-c{end+1} = struct("label", "Paper: F.1245, 3 rpm, horizon", "nexrad_scan", "constant", ...
-    "nexrad_pattern", "f1245", "asr_pattern", "f1245");
-% Every WSR-88D VCP in operational Level II data, 2024-2026, with every
-% option combination the RDA allows. Limits come from the VCP table
-% (scan.limits). ROC VCP Info Sheet: AVSET is compatible with SAILS and
-% MRLE; SAILS and MRLE cannot be combined. AVSET is run at its lowest
-% termination elevation (6.4 deg), which removes the most high cuts and so
-% gives the 0.5 deg cuts their largest time share. The slowest decoded
-% split-cut Doppler rate (12.524 deg/s) is added where a VCP's default is
-% faster: the longest dwell at low tilt.
-vcp_list = [35 31 32 34 215 212 12 112];
-cd_slow = 12.524;
-for vcp = vcp_list
-    s0 = nexrad_vcp_rev1(vcp);
-    lim = s0.limits;
-    adapt = struct("label", "", "sails", 0, "mrle", 0);          % SAILS or MRLE (or neither)
-    for k = 1:lim.sails
-        adapt(end+1) = struct("label", sprintf(" SAILSx%d", k), "sails", k, "mrle", 0); %#ok<SAGROW>
-    end
-    if lim.mrle
-        for k = [2 3 4]
-            adapt(end+1) = struct("label", sprintf(" MRLEx%d", k), "sails", 0, "mrle", k); %#ok<SAGROW>
-        end
-    end
-    avs = Inf;
-    if lim.avset
-        avs = [Inf 6.4];
-    end
-    cds = {[]};
-    cd_default = s0.cuts.rate_deg_s(find(s0.cuts.waveform == "CD", 1));
-    if lim.cd_rate && abs(cd_default - cd_slow) > 1e-9
-        cds = {[], cd_slow};
-    end
-    for a = adapt
-        for t = avs
-            for d = cds
-                lab = sprintf("VCP %d%s", vcp, a.label);
-                if isfinite(t)
-                    lab = lab + " AVSET 6.4";
-                end
-                if ~isempty(d{1})
-                    lab = lab + sprintf(", CD %.3f", d{1});
-                end
-                c{end+1} = struct("label", lab, "vcp", vcp, "sails", a.sails, "mrle", a.mrle, ...
-                    "avset_top_deg", t, "cd_rate_deg_s", d{1}); %#ok<SAGROW>
-            end
-        end
-    end
-end
+% ---- Case list: the paper baseline, then every VCP mode (74), with the
+%      option combinations the RDA allows (vcp_mode_cases_rev1)
+c = vcp_mode_cases_rev1();
 fprintf("%d cases (%d VCP modes and the paper baseline)\n", numel(c), numel(c) - 1);
 
 % ---- Run

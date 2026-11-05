@@ -20,6 +20,10 @@
 %        comes back once per volume. The effective NEXRAD window is the
 %        0.925 deg beam crossed at the slowest 0.5 deg rate (12.524 deg/s),
 %        in volume-phase degrees. Found in trial 61 of the 120 h run.
+%     5. ASR-9 and ASR-9, both 12.5 rpm (M.1464-2 Radar B: 75 deg/s,
+%        1.3 deg; same +/-0.5 deg/s tolerance, FAA value TODO)
+%     6. ASR-9 and ASR-11, both 12.5 rpm (equal rates, mixed beams)
+%     7. ASR-9 and the same WSR-88D volume as case 4
 %   For each case: the nominal episode and the probability, over the drive
 %   offsets, that an aligned episode outlasts 1 min to 30 days.
 
@@ -32,6 +36,10 @@ s_v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4);
 r_v = 360/s_v.volume_s;                         % volume phase rate (deg/s)
 dw(end+1) = struct("label", sprintf("ASR-11 / WSR-88D volume (VCP 212 SAILSx3 AVSET 6.4, %.1f s)", s_v.volume_s), ...
     "D", alignment_dwell_rev1(75, r_v, 1.45, 0.925*r_v/12.524, jitter_deg_s=[0.5 0], max_ratio=100));
+dw(end+1) = struct("label", "ASR-9 / ASR-9, 12.5 rpm", "D", alignment_dwell_rev1(75, 75, 1.3, 1.3));
+dw(end+1) = struct("label", "ASR-9 / ASR-11, 12.5 rpm", "D", alignment_dwell_rev1(75, 75, 1.3, 1.45));
+dw(end+1) = struct("label", sprintf("ASR-9 / WSR-88D volume (VCP 212 SAILSx3 AVSET 6.4, %.1f s)", s_v.volume_s), ...
+    "D", alignment_dwell_rev1(75, r_v, 1.3, 0.925*r_v/12.524, jitter_deg_s=[0.5 0], max_ratio=100));
 rows = cell(numel(dw), 1);
 for k = 1:numel(dw)
     D = dw(k).D;

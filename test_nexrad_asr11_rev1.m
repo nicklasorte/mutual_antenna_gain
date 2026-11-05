@@ -689,6 +689,52 @@ verifyError(tc, @() mag_sensitivity_rev1(b, struct("label", "x")), "radar_coupli
 end
 
 % =========================================================================
+function testAsr9Parameters(tc)
+% ASR-9 = M.1464-2 Table 1 Radar B: 33.5 dBi, 1.3 deg azimuth, 4.8 deg
+% elevation, +7.3 dBi first sidelobe; remote sidelobe +3.5 dBi (Radar C,
+% TODO); 12.5 rpm.
+out = quick_run(struct("atc_radar", "asr9"));
+a = out.sys_asr11;
+verifyEqual(tc, a.name, "ASR-9");
+verifyEqual(tc, [a.tx.g_max_dBi, a.tx.az_bw_deg, a.tx.el_bw_deg], [33.5 1.3 4.8]);
+verifyEqual(tc, a.tx.az_sll_dB, 7.3 - 33.5, "AbsTol", 1e-12);
+verifyEqual(tc, a.tx.floor_dB, 3.5 - 33.5, "AbsTol", 1e-12);
+verifyEqual(tc, a.scan.rate_rpm, 12.5);
+verifyEqual(tc, a.region_sll_dB, 7.3 - 33.5, "AbsTol", 1e-12);
+verifyEqual(tc, out.opts.atc_radar, "asr9");
+T = out.assumptions;
+verifyEqual(tc, T.value(T.parameter == "ASR-9 peak gain"), 33.5);
+verifyEqual(tc, T.source(T.parameter == "ASR-9 azimuth beamwidth"), "M1464");
+verifyTrue(tc, contains(T.note(T.parameter == "ASR-9 floor (remote sidelobes)"), "TODO"));
+verifyFalse(tc, any(startsWith(T.parameter, "ASR-11")), "only the selected radar is listed");
+verifyTrue(tc, any(out.citations.key == "WIKI_ASR9"));
+verifyTrue(tc, contains(out.citations.reference(out.citations.key == "M1464"), "Radar B (ASR-9)"));
+% Reference levels: same NEXRAD, ASR-9 peak on the path
+R = out.ref_levels;
+g_n_mb = 45.5 - 12*(0.5/0.925)^2;
+verifyEqual(tc, R.mag_dBi(1), g_n_mb + 33.5, "AbsTol", 1e-3);
+verifyEqual(tc, R.mag_dBi(3), g_n_mb + 3.5, "AbsTol", 1e-3);
+verifyEqual(tc, R.mag_dBi(5), 33.5 + 45.5 - 55, "AbsTol", 1e-6);
+verifyEqual(tc, R.combination(2), "NEXRAD main beam + ASR-9 near sidelobe");
+verifyEqual(tc, out.sensitivity.mag_dBi(1), 45.5 + 33.5, "AbsTol", 1e-9);
+verifyTrue(tc, contains(out.lobe_pairs.Properties.Description, "ASR-9"));
+% The ASR-9 main-beam region is narrower than the ASR-11's.
+d = quick_run(struct());
+verifyEqual(tc, d.sys_asr11.name, "ASR-11");
+verifyLessThan(tc, out.lobe_pairs.Properties.UserData.asr11(1), d.lobe_pairs.Properties.UserData.asr11(1));
+end
+
+function testAtcRadarErrors(tc)
+verifyError(tc, @() quick_run(struct("atc_radar", "asr8")), "radar_coupling:badAtcRadar");
+% Remote sidelobe at or below the radar's own first sidelobe
+verifyError(tc, @() quick_run(struct("atc_radar", "asr9", "asr_remote_sl_dBi", 8)), "radar_coupling:badRemote");
+r = quick_run(struct("asr_remote_sl_dBi", 8));                  % ASR-11 first sidelobe is +9.5 dBi
+verifyEqual(tc, r.sys_asr11.tx.floor_dB, 8 - 34, "AbsTol", 1e-12);
+verifyError(tc, @() quick_run(struct("asr_remote_sl_dBi", 10)), "radar_coupling:badRemote");
+f = quick_run(struct("atc_radar", "asr9", "asr_pattern", "f1245"));
+verifyEqual(tc, f.sys_asr11.tx.g_max_dBi, 34, "WP_REV3 F.1245 gain for the ASR-9");
+end
+
 function out = quick_run(o)
 % Small run for tests; fields of o override.
 d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1);
