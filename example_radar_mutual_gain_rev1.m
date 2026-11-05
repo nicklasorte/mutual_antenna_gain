@@ -12,7 +12,7 @@
 %   horizontal line-of-sight path (opts.el12_deg = opts.el21_deg = 0).
 %   Polarization mismatch is not modeled.
 
-clear; close all;
+clearvars -except example_overrides; close all;   % example_overrides: small runs (tests)
 
 % ---- Reflector radars use the default Statgain pattern (NTIA TM-13-489
 %      Table 4-1), which needs only the peak gain. For an M.1851-2 fan-beam
@@ -66,6 +66,9 @@ sys_mf.scan = struct("type", "array_multiface", ...  % defaults: 4 faces, random
 
 % ---- Run ----
 opts = struct("seed", 20261101, "mode", "random", "n_samples", 5e6);
+if exist("example_overrides", "var")
+    opts = merge_overrides_rev1(opts, example_overrides);
+end
 cases = {sys_d, sys_aesa, sys_mf};
 res = cell(size(cases));
 for i = 1:numel(cases)
@@ -77,6 +80,9 @@ end
 % Time series for Case 1: event durations and the M.2069-0 Fig. 1 view.
 opts_ts = struct("seed", 20261101, "mode", "time_series", ...
     "duration_s", 3600, "n_trials", 8, "event_thresh_dBi", [20 30 40 50]);
+if exist("example_overrides", "var")
+    opts_ts = merge_overrides_rev1(opts_ts, example_overrides);
+end
 ts1 = radar_mutual_gain_cdf_rev1(sys1, sys_d, opts_ts);
 fprintf("\nRadar D -> Radar A, time series (beat %.0f s; nominal rates repeat every %.0f s)\n", ...
     ts1.geom.beat_period_s, ts1.geom.joint_period_s);
@@ -90,6 +96,9 @@ disp(ts1.events12)
 asr9 = struct("name", "ASR-9", "tx", struct("g_max_dBi", 34), ...
     "scan", struct("type", "mech_rotating", "rate_rpm", 12.5));
 o_un = struct("seed", 20261101, "mode", "random", "n_samples", 5e6);
+if exist("example_overrides", "var")
+    o_un = merge_overrides_rev1(o_un, example_overrides);
+end
 w = warning("off", "radar_coupling:equalRates");
 un = radar_mutual_gain_cdf_rev1(asr9, asr9, o_un);
 warning(w);

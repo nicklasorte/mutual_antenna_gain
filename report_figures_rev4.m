@@ -22,11 +22,22 @@
 %   Style: NTIA palette (mid gray context, light blue highlight, purple
 %   second highlight, dark blue text), Times New Roman, 6.5 in wide.
 %   Titles, captions and sources are in the report text, not the images.
+%   A workspace struct example_overrides makes a small run (tests): its
+%   n_samples, duration_s, n_trials apply to every run, and out_dir, n_h
+%   (hours of the long run) and n_list (convergence sample sizes) replace
+%   the defaults.
 
 example_nexrad_asr11_rev1;          % defines T, V, res, w, i999, i99
 close all;
 
 out_dir = fullfile(fileparts(mfilename("fullpath")), "docs", "figures");
+n_h = 120;
+n_list = [5e5 5e6 2e7];
+if exist("example_overrides", "var")
+    if isfield(example_overrides, "out_dir"), out_dir = example_overrides.out_dir; end
+    if isfield(example_overrides, "n_h"), n_h = example_overrides.n_h; end
+    if isfield(example_overrides, "n_list"), n_list = example_overrides.n_list; end
+end
 if ~isfolder(out_dir)
     mkdir(out_dir);
 end
@@ -46,9 +57,11 @@ wopt.n_samples = base.n_samples;
 %      90,000 ASR-11 revolutions; a run of two to five days was asked for at
 %      the November 4, 2026 meeting). Same seed as the example, so trial 1
 %      and the random-mode CDF match the sweep.
-n_h = 120;
 o_long = wopt;
 o_long.duration_s = 3600;
+if exist("example_overrides", "var")
+    o_long = merge_overrides_rev1(o_long, example_overrides);
+end
 o_long.n_trials = n_h;
 o_long.keep_ts1 = true;
 wl = nexrad_asr11_mag_rev1(o_long);
@@ -66,16 +79,15 @@ lv = [wl.ref_levels.mag_dBi(5), 30, 40, wl.ref_levels.mag_dBi(3), 50, 60, 70, wl
 exc = table(lv(:), arrayfun(@(v) sum(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     arrayfun(@(v) 100*mean(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     'VariableNames', ["level_dBi", "revolutions", "pct_of_revolutions"]);
-exc.per_hour = exc.revolutions/n_h;
+exc.per_hour = exc.revolutions/(n_h*o_long.duration_s/3600);
 writetable(exc, fullfile(out_dir, "rev_exceedance_120h_rev4.csv"));
 
 % ---- Sample-size convergence of the time-weighted percentiles (worst mode)
-n_list = [5e5 5e6 2e7];
 cv = cell(numel(n_list), 1);
 for k = 1:numel(n_list)
     o = wopt;
     o.n_samples = n_list(k);
-    o.duration_s = 60;
+    o.duration_s = min(60, base.duration_s);
     o.n_trials = 1;
     r = nexrad_asr11_mag_rev1(o);
     q = r.cdf.pct21(r.cdf.pct21.pct >= 99, :);

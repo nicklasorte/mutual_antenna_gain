@@ -11,9 +11,12 @@
 %     vol_max             largest per-volume maximum in the time series
 %     t_low_pct           % of NEXRAD volume time at the 0.5 deg cuts
 
-clear; close all;
+clearvars -except example_overrides; close all;   % example_overrides: small runs (tests)
 
 base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);   % M.2069-0: 5e6 samples
+if exist("example_overrides", "var")
+    base = merge_overrides_rev1(base, example_overrides);
+end
 thr = [40 50 60];                                  % per-revolution thresholds (dBi)
 
 % ---- Case list: VCP and scan options (limits from nexrad_vcp_rev1 / ROC)
