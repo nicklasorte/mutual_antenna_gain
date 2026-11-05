@@ -1,9 +1,10 @@
 %EXAMPLE_RADAR_MUTUAL_GAIN_REV1 Mutual antenna gain CDFs, 2.7-3.1 GHz radars.
 %   Three cases against an ATC reflector radar (victim, Radar A):
-%     1. Radar B, reflector, rotating at a different rate
+%     1. Radar D, reflector, rotating at a different rate
 %     2. Rotating active phased array, random beam steering in elevation
 %     3. Four-face staring phased array, beam steered over 360 deg
-%   Antenna and scan values come from Rec. ITU-R M.1464-2 Tables 1 and 2.
+%   Antenna and scan values come from Rec. ITU-R M.1464-2 Tables 1 and 2:
+%   https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1464-2-201502-I!!PDF-E.pdf
 %   Reflector radars use the default Statgain pattern (NTIA TM-13-489);
 %   arrays use Rec. ITU-R M.1851-2 Section 6.2. Values the recommendations
 %   don't give are marked TODO and must be replaced with system data before use.
@@ -27,11 +28,13 @@ sys1.scan = struct("type", "mech_rotating", "rate_deg_s", 75, ...
     "tilt_deg", 0, ...           % TODO: beam-axis tilt
     "rate_jitter_deg_s", 0.5);   % M.2069-0 Annex 1: +/-0.5 deg/s drive accuracy
 
-% ---- Case 1: Radar B, M.1464-2 Table 1: 34 dBi, 90 deg/s ----
-radar_b = struct("g_max_dBi", 34);
-sys_b.name = "Radar B";
-sys_b.tx = radar_b;
-sys_b.scan = struct("type", "mech_rotating", "rate_deg_s", 90, "tilt_deg", 0, ...
+% ---- Case 1: Radar D, M.1464-2 Table 1: 32.8 dBi, 1.6 deg azimuth
+%      beamwidth, 90 deg/s. (Radar B is 33.5 dBi at 75 deg/s, the same
+%      rate as Radar A; Radar D is the Table 1 reflector at another rate.)
+radar_d = struct("g_max_dBi", 32.8);
+sys_d.name = "Radar D";
+sys_d.tx = radar_d;
+sys_d.scan = struct("type", "mech_rotating", "rate_deg_s", 90, "tilt_deg", 0, ...
     "rate_jitter_deg_s", 0.5);
 
 % ---- Case 2: rotating AESA (M.1464-2 Table 2, Radar L/M class: active
@@ -63,7 +66,7 @@ sys_mf.scan = struct("type", "array_multiface", ...  % defaults: 4 faces, random
 
 % ---- Run ----
 opts = struct("seed", 20261101, "mode", "random", "n_samples", 5e6);
-cases = {sys_b, sys_aesa, sys_mf};
+cases = {sys_d, sys_aesa, sys_mf};
 res = cell(size(cases));
 for i = 1:numel(cases)
     res{i} = radar_mutual_gain_cdf_rev1(sys1, cases{i}, opts);
@@ -74,8 +77,8 @@ end
 % Time series for Case 1: event durations and the M.2069-0 Fig. 1 view.
 opts_ts = struct("seed", 20261101, "mode", "time_series", ...
     "duration_s", 3600, "n_trials", 8, "event_thresh_dBi", [20 30 40 50]);
-ts1 = radar_mutual_gain_cdf_rev1(sys1, sys_b, opts_ts);
-fprintf("\nRadar B -> Radar A, time series (beat %.0f s; nominal rates repeat every %.0f s)\n", ...
+ts1 = radar_mutual_gain_cdf_rev1(sys1, sys_d, opts_ts);
+fprintf("\nRadar D -> Radar A, time series (beat %.0f s; nominal rates repeat every %.0f s)\n", ...
     ts1.geom.beat_period_s, ts1.geom.joint_period_s);
 disp(ts1.pct21)
 disp(ts1.events12)
@@ -119,7 +122,7 @@ set(gca, "YScale", "log");
 ylim([1e-4 100]);
 xlabel("Mutual antenna gain (dBi)");
 ylabel("Time exceeded (%)");
-legend([names, {"Radar B, time series"}], "Location", "southwest");
+legend([names, {"Radar D, time series"}], "Location", "southwest");
 title("Interferer tx + victim rx gain, 2.7-3.1 GHz");
 
 figure("Name", "Coupling time series");
@@ -128,4 +131,4 @@ plot(ts1.ts.t_s(idx), ts1.ts.g21_dBi(idx));
 grid on;
 xlabel("Time (s)");
 ylabel("Mutual antenna gain (dBi)");
-title(sprintf("Radar B to Radar A, rates 90 and 75 deg/s (beat %.0f s)", ts1.geom.beat_period_s));
+title(sprintf("Radar D to Radar A, rates 90 and 75 deg/s (beat %.0f s)", ts1.geom.beat_period_s));
