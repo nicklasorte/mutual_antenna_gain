@@ -1,0 +1,9 @@
+vcp,use,cuts,volume_s,t_low_pct,max_sails,pulse_width
+35,"Clear air (default), 0.5-6.4 deg",12,410.024630242498,23.7528807769164,1,short
+31,"Clear air, long pulse, 0.5-4.5 deg",8,569.538298373377,25.0136104924524,0,long
+32,"Clear air, short pulse, 0.5-4.5 deg",7,568.979906621214,26.6527206202872,0,short
+34,"Clear air, long pulse, 0.5-4.5 deg",10,524.441691176417,21.6952469548198,1,long
+215,"Default precipitation",18,344.510770365822,15.711096105582,1,short
+212,"Rapidly evolving convection",17,279.304746213843,16.3860056112747,3,short
+12,"Rapidly evolving convection",17,236.402888367761,13.2932124767619,3,short
+112,"Large-scale, high-velocity systems (MPDA)",20,320.122740388526,19.4142999121564,1,short

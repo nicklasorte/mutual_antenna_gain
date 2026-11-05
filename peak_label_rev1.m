@@ -10,7 +10,7 @@ function txt = peak_label_rev1(r, P, g_asr_max)
 %   Example:
 %     txt = peak_label_rev1(out.scan_max.asr_rev(k, :), out.scan_max.plateaus, 34);
 %
-%   See also report_figures_rev4, nexrad_asr11_mag_rev1.
+%   See also report_figures_rev5, nexrad_asr11_mag_rev1.
 
 arguments
     r (1,:) table

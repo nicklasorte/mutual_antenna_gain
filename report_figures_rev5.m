@@ -1,4 +1,4 @@
-%REPORT_FIGURES_REV4 Figures and tables for methodology report rev4.
+%REPORT_FIGURES_REV5 Figures and tables for methodology report rev5.
 %   Runs example_nexrad_asr11_rev1 (WSR-88D vs ASR-11, all VCP modes) and
 %   writes to docs/figures:
 %     fig1_antenna_patterns.png   NEXRAD and ASR-11 antenna patterns
@@ -11,26 +11,26 @@
 %                                 trial with the most peaks above the 45.5 dBi plateau)
 %     fig8_sensitivity.png        MAG change for each antenna and scan assumption
 %     fig9_asr9_comparison.png    ASR-9 and ASR-11 azimuth patterns and exceedance
-%     asr9_*_rev4.csv             ASR-9 sweep, envelope, comparison with the ASR-11,
+%     asr9_*_rev5.csv             ASR-9 sweep, envelope, comparison with the ASR-11,
 %                                 reference levels, lobe pairs, persistence, MAG
 %                                 choices and assumptions (example_asr9_rev1)
-%     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
-%     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
-%     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
-%     persistence_120h_rev4.csv   runs of consecutive high ASR-11 revolutions
-%     persistence_volume_120h_rev4.csv  runs of consecutive high NEXRAD volumes
-%     sensitivity_sweep_rev4.csv  one-at-a-time sensitivity (example_sensitivity_rev1)
-%     alignment_dwell_rev4.csv    equal and multiple scan rates (example_asr11_drift_rev1)
-%     vcp_sweep_rev4.csv          sweep table (all modes)
-%     ref_levels_rev4.csv, by_elevation_rev4.csv, asr_rev_pct_rev4.csv,
-%     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
-%     cdf_array_rev4.csv (CDF arrays: percent 0-100 and MAG dBi)
+%     plateaus_rev5.csv, peaks_above_plateau_120h_rev5.csv, rev_exceedance_120h_rev5.csv,
+%     asr_rev_pct_120h_rev5.csv, convergence_rev5.csv
+%     lobe_pairs_rev5.csv         time share and largest MAG per pattern-region pair
+%     persistence_120h_rev5.csv   runs of consecutive high ASR-11 revolutions
+%     persistence_volume_120h_rev5.csv  runs of consecutive high NEXRAD volumes
+%     sensitivity_sweep_rev5.csv  one-at-a-time sensitivity (example_sensitivity_rev1)
+%     alignment_dwell_rev5.csv    equal and multiple scan rates (example_asr11_drift_rev1)
+%     vcp_sweep_rev5.csv          sweep table (all modes)
+%     ref_levels_rev5.csv, by_elevation_rev5.csv, asr_rev_pct_rev5.csv,
+%     sensitivity_rev5.csv, mode_envelope_rev5.csv, mbmb_vs_statistical_rev5.csv,
+%     cdf_array_rev5.csv (CDF arrays: percent 0-100 and MAG dBi)
 %     Tables typed in the report, exported here so every number has a file:
-%     case1_percentiles_rev4.csv  Case 1 of example_radar_mutual_gain_rev1 (Section 12)
-%     vcp_table_rev4.csv          VCP use, cuts, volume time, time at 0.5 deg (Step 5)
-%     worst_mode_weights_rev4.csv time weights of the worst mode by elevation (Step 5)
-%     nexrad_gain_by_cut_rev4.csv NEXRAD gain toward the ASR-11, beam azimuth on the path (Step 2)
-%     asr11_gain_cut_rev4.csv     ASR-11 gain toward the NEXRAD by azimuth offset (Step 3)
+%     case1_percentiles_rev5.csv  Case 1 of example_radar_mutual_gain_rev1 (Section 12)
+%     vcp_table_rev5.csv          VCP use, cuts, volume time, time at 0.5 deg (Step 5)
+%     worst_mode_weights_rev5.csv time weights of the worst mode by elevation (Step 5)
+%     nexrad_gain_by_cut_rev5.csv NEXRAD gain toward the ASR-11, beam azimuth on the path (Step 2)
+%     asr11_gain_cut_rev5.csv     ASR-11 gain toward the NEXRAD by azimuth offset (Step 3)
 %     fig_a1_call_tree.png        call tree of the repository functions (Appendix A),
 %                                 from matlab.codetools.requiredFilesAndProducts
 %   Style: NTIA palette (mid gray context, light blue highlight, purple
@@ -48,7 +48,7 @@ example_radar_mutual_gain_rev1;
 if ~exist("example_overrides", "var")
     example_overrides = struct();
 end
-writetable(res{1}.pct21, fullfile(report_dir(example_overrides), "case1_percentiles_rev4.csv"));
+writetable(res{1}.pct21, fullfile(report_dir(example_overrides), "case1_percentiles_rev5.csv"));
 
 example_nexrad_asr11_rev1;          % defines T, V, res, w, i999, i99
 close all;
@@ -58,11 +58,11 @@ n_h = 120;
 n_list = [5e5 5e6 2e7];
 if isfield(example_overrides, "n_h"), n_h = example_overrides.n_h; end
 if isfield(example_overrides, "n_list"), n_list = example_overrides.n_list; end
-writetable(T, fullfile(out_dir, "vcp_sweep_rev4.csv"));
-writetable(w.ref_levels, fullfile(out_dir, "ref_levels_rev4.csv"));
-writetable(w.scan_max.by_elevation, fullfile(out_dir, "by_elevation_rev4.csv"));
-writetable(w.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_rev4.csv"));
-writetable(w.sensitivity, fullfile(out_dir, "sensitivity_rev4.csv"));
+writetable(T, fullfile(out_dir, "vcp_sweep_rev5.csv"));
+writetable(w.ref_levels, fullfile(out_dir, "ref_levels_rev5.csv"));
+writetable(w.scan_max.by_elevation, fullfile(out_dir, "by_elevation_rev5.csv"));
+writetable(w.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_rev5.csv"));
+writetable(w.sensitivity, fullfile(out_dir, "sensitivity_rev5.csv"));
 
 % ---- Worst mode (99.9% MAG) options, from the sweep case list
 i_w = 1 + i999;                     % worst mode in res, T and c
@@ -100,21 +100,21 @@ o_fig.n_trials = 1;
 o_fig.n_samples = 1e4;                          % the random-mode CDF is not used
 o_fig.keep_ts1 = true;
 wf = nexrad_asr11_mag_rev1(o_fig);
-writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
-writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev4.csv"));
-writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev4.csv"));
-writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev4.csv"));
-writetable(wl.scan_max.persistence_volume, fullfile(out_dir, "persistence_volume_120h_rev4.csv"));
+writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev5.csv"));
+writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev5.csv"));
+writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev5.csv"));
+writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev5.csv"));
+writetable(wl.scan_max.persistence_volume, fullfile(out_dir, "persistence_volume_120h_rev5.csv"));
 pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
     "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
     "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
-writetable(sortrows(pk, "max_g21_dBi", "descend"), fullfile(out_dir, "peaks_above_plateau_120h_rev4.csv"));
+writetable(sortrows(pk, "max_g21_dBi", "descend"), fullfile(out_dir, "peaks_above_plateau_120h_rev5.csv"));
 lv = [wl.ref_levels.mag_dBi(5), 30, 40, wl.ref_levels.mag_dBi(3), 50, 60, 70, wl.ref_levels.mag_dBi(1) - 0.2];
 exc = table(lv(:), arrayfun(@(v) sum(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     arrayfun(@(v) 100*mean(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     'VariableNames', ["level_dBi", "revolutions", "pct_of_revolutions"]);
 exc.per_hour = exc.revolutions/(n_h*o_long.duration_s/3600);
-writetable(exc, fullfile(out_dir, "rev_exceedance_120h_rev4.csv"));
+writetable(exc, fullfile(out_dir, "rev_exceedance_120h_rev5.csv"));
 
 % ---- Sample-size convergence of the time-weighted percentiles (worst mode)
 cv = cell(numel(n_list), 1);
@@ -127,8 +127,8 @@ for k = 1:numel(n_list)
     q = r.cdf.pct21(r.cdf.pct21.pct >= 99, :);
     cv{k} = [table(n_list(k) + zeros(height(q), 1), 'VariableNames', "n_samples"), q];
 end
-writetable(vertcat(cv{:}), fullfile(out_dir, "convergence_rev4.csv"));
-writetable(env.pct, fullfile(out_dir, "mode_envelope_rev4.csv"));
+writetable(vertcat(cv{:}), fullfile(out_dir, "convergence_rev5.csv"));
+writetable(env.pct, fullfile(out_dir, "mode_envelope_rev5.csv"));
 
 % ---- Sensitivity (one assumption at a time, from the worst mode) and
 %      alignment of equal or multiple scan rates
@@ -136,24 +136,24 @@ sens_base = wopt;
 sens_base.duration_s = base.duration_s;
 sens_base.n_trials = base.n_trials;
 example_sensitivity_rev1;           % defines Tsens
-writetable(Tsens, fullfile(out_dir, "sensitivity_sweep_rev4.csv"));
+writetable(Tsens, fullfile(out_dir, "sensitivity_sweep_rev5.csv"));
 example_asr11_drift_rev1;           % defines Tdrift
-writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev4.csv"));
+writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev5.csv"));
 
 % ---- ASR-9 (M.1464-2 Radar B): every VCP mode, envelope, and the paired
 %      comparison with the ASR-11 at the ASR-9's worst mode
 asr9_base = struct("seed", base.seed, "n_samples", base.n_samples, ...
     "duration_s", base.duration_s, "n_trials", base.n_trials);
 example_asr9_rev1;                  % defines T9, env9, w9, w11, Tcmp9, cmp9_label
-writetable(T9, fullfile(out_dir, "asr9_vcp_sweep_rev4.csv"));
-writetable(env9.pct, fullfile(out_dir, "asr9_mode_envelope_rev4.csv"));
-writetable(Tcmp9, fullfile(out_dir, "asr9_comparison_rev4.csv"));
-writetable(w9.ref_levels, fullfile(out_dir, "asr9_ref_levels_rev4.csv"));
-writetable(w9.lobe_pairs, fullfile(out_dir, "asr9_lobe_pairs_rev4.csv"));
-writetable(w9.scan_max.persistence, fullfile(out_dir, "asr9_persistence_rev4.csv"));
-writetable(w9.scan_max.persistence_volume, fullfile(out_dir, "asr9_persistence_volume_rev4.csv"));
-writetable(w9.sensitivity, fullfile(out_dir, "asr9_sensitivity_rev4.csv"));
-writetable(w9.assumptions, fullfile(out_dir, "asr9_assumptions_rev4.csv"));
+writetable(T9, fullfile(out_dir, "asr9_vcp_sweep_rev5.csv"));
+writetable(env9.pct, fullfile(out_dir, "asr9_mode_envelope_rev5.csv"));
+writetable(Tcmp9, fullfile(out_dir, "asr9_comparison_rev5.csv"));
+writetable(w9.ref_levels, fullfile(out_dir, "asr9_ref_levels_rev5.csv"));
+writetable(w9.lobe_pairs, fullfile(out_dir, "asr9_lobe_pairs_rev5.csv"));
+writetable(w9.scan_max.persistence, fullfile(out_dir, "asr9_persistence_rev5.csv"));
+writetable(w9.scan_max.persistence_volume, fullfile(out_dir, "asr9_persistence_volume_rev5.csv"));
+writetable(w9.sensitivity, fullfile(out_dir, "asr9_sensitivity_rev5.csv"));
+writetable(w9.assumptions, fullfile(out_dir, "asr9_assumptions_rev5.csv"));
 
 c = struct("dark", [22 51 83]/255, "blue", [86 116 196]/255, ...
     "purple", [110 79 146]/255, "gray", [138 141 145]/255, "grid", [230 230 230]/255);
@@ -281,7 +281,7 @@ put_label(ax, 3580, R.mag_dBi(1) + 1.6, sprintf("Main beam to main beam on the p
 % the cut's tilt).
 pk1 = Rv(Rv.max_g21_dBi >= lev_hi, :);
 % Mark every peak above the plateau; letter the three largest and explain
-% them in a key (the full list is in peaks_above_plateau_120h_rev4.csv).
+% them in a key (the full list is in peaks_above_plateau_120h_rev5.csv).
 plot(ax, pk1.t_start_s, pk1.max_g21_dBi, "o", "Color", c.purple, "MarkerFaceColor", c.purple, "MarkerSize", 3.5);
 [~, o3] = sort(pk1.max_g21_dBi, "descend");
 o3 = o3(1:min(3, numel(o3)));
@@ -347,11 +347,11 @@ save_fig(f, out_dir, "fig7_mbmb_vs_statistical");
 A3 = {res{i_p}.cdf.cdf_array21, res{i_215}.cdf.cdf_array21, res{i_w}.cdf.cdf_array21};   % opts.cdf_pct grid
 cdf_tab = array2table([A3{1}(:, 1), A3{1}(:, 2), A3{2}(:, 2), A3{3}(:, 2)], ...
     "VariableNames", ["pct", "paper_baseline_dBi", "vcp215_dBi", "worst_mode_dBi"]);
-writetable(cdf_tab, fullfile(out_dir, "cdf_array_rev4.csv"));
+writetable(cdf_tab, fullfile(out_dir, "cdf_array_rev5.csv"));
 writetable([table(repmat(T.case(i_p), height(Sp), 1), 'VariableNames', "case"), Sp; ...
     table(repmat(T.case(i_215), height(S215), 1), 'VariableNames', "case"), S215; ...
     table(repmat(worst, height(Sw), 1), 'VariableNames', "case"), Sw], ...
-    fullfile(out_dir, "mbmb_vs_statistical_rev4.csv"));
+    fullfile(out_dir, "mbmb_vs_statistical_rev5.csv"));
 
 % ---- Figure 8: sensitivity, change in MAG at 99.9% and 99.999% -------------
 f = new_fig(6.5, 4.2);
@@ -409,22 +409,22 @@ for k = 1:numel(vl)
         100*sum(sv.cuts.dur_s(sv.cuts.el_deg == 0.5))/sv.volume_s, sv.limits.sails, string(sv.pulse_width)};
 end
 writetable(cell2table(vertcat(vt{:}), "VariableNames", ["vcp", "use", "cuts", "volume_s", ...
-    "t_low_pct", "max_sails", "pulse_width"]), fullfile(out_dir, "vcp_table_rev4.csv"));
+    "t_low_pct", "max_sails", "pulse_width"]), fullfile(out_dir, "vcp_table_rev5.csv"));
 sw = res{i_w}.sys_nexrad.scan;
 [Gw, elw] = findgroups(sw.cuts.el_deg);
 rates = splitapply(@(r) strjoin(string(unique(r)'), " "), sw.cuts.rate_deg_s, Gw);
 tw = splitapply(@sum, sw.cuts.dur_s, Gw);
 writetable(table(elw, splitapply(@numel, sw.cuts.el_deg, Gw), rates, tw, 100*tw/sw.volume_s, ...
     'VariableNames', ["el_deg", "cuts_per_volume", "rates_deg_s", "time_s", "share_pct"]), ...
-    fullfile(out_dir, "worst_mode_weights_rev4.csv"));
+    fullfile(out_dir, "worst_mode_weights_rev5.csv"));
 pn = antenna_prepare_rev1(res{i_w}.sys_nexrad.tx);
 el_all = unique(nexrad_vcp_rev1(212).tilt_deg);
 writetable(table(el_all, antenna_gain_rev1(pn, 0, 0, state_az(zeros(size(el_all)), el_all)), ...
-    'VariableNames', ["el_deg", "nexrad_gain_on_path_dBi"]), fullfile(out_dir, "nexrad_gain_by_cut_rev4.csv"));
+    'VariableNames', ["el_deg", "nexrad_gain_on_path_dBi"]), fullfile(out_dir, "nexrad_gain_by_cut_rev5.csv"));
 pa = antenna_prepare_rev1(res{i_w}.sys_asr11.tx);
 off = [0; 0.725; 2.9; 10; 90; 180];
 writetable(table(off, antenna_gain_rev1(pa, 0, 0, state_az(off, 0)), ...
-    'VariableNames', ["az_off_deg", "asr11_gain_dBi"]), fullfile(out_dir, "asr11_gain_cut_rev4.csv"));
+    'VariableNames', ["az_off_deg", "asr11_gain_dBi"]), fullfile(out_dir, "asr11_gain_cut_rev5.csv"));
 
 % ---- Figure A-1: call tree of the repository functions ---------------------
 %      Direct calls only (requiredFilesAndProducts "toponly"); tests and the
@@ -451,7 +451,7 @@ h = plot(ax, G, "Layout", "layered", "Direction", "down", "NodeColor", c.blue, "
 h.NodeLabel = replace(G.Nodes.Name, "_rev1", "");
 axis(ax, "off");
 save_fig(f, out_dir, "fig_a1_call_tree");
-writetable(table(e1, e2, 'VariableNames', ["caller", "callee"]), fullfile(out_dir, "call_tree_rev4.csv"));
+writetable(table(e1, e2, 'VariableNames', ["caller", "callee"]), fullfile(out_dir, "call_tree_rev5.csv"));
 
 fprintf("Figures and tables written to %s\n", out_dir);
 

@@ -2,7 +2,7 @@ function tests = test_scripts_rev1
 %TEST_SCRIPTS_REV1 Tests for the example scripts, the C# crosscheck, the
 %   report figure script, merge_overrides_rev1 and peak_label_rev1. Each script runs end to
 %   end with small runs set through a workspace struct example_overrides,
-%   so every line of each script executes. report_figures_rev4 writes to a
+%   so every line of each script executes. report_figures_rev5 writes to a
 %   temporary folder, not docs/figures.
 %   Run with runtests("test_scripts_rev1").
 tests = functiontests(localfunctions);
@@ -172,7 +172,7 @@ ov.out_dir = d;                                 % created by the script
 ov.n_h = 3;
 ov.long_duration_s = 1200;                      % 1 h in all: peaks above the plateau
 ov.n_list = [1e4 2e4];
-run_script("report_figures_rev4", ov);
+run_script("report_figures_rev5", ov);
 png = "fig" + ["1_antenna_patterns", "2_vcp_schedule", "3_low_tilt_driver", "4_exceedance", ...
     "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity", "9_asr9_comparison", ...
     "_a1_call_tree"] + ".png";
@@ -182,32 +182,32 @@ csv = ["vcp_sweep", "ref_levels", "by_elevation", "asr_rev_pct", "sensitivity", 
     "alignment_dwell", "cdf_array", "mbmb_vs_statistical", "case1_percentiles", "vcp_table", ...
     "worst_mode_weights", "nexrad_gain_by_cut", "asr11_gain_cut", "call_tree", ...
     "asr9_" + ["vcp_sweep", "mode_envelope", "comparison", "ref_levels", "lobe_pairs", ...
-    "persistence", "persistence_volume", "sensitivity", "assumptions"]] + "_rev4.csv";
+    "persistence", "persistence_volume", "sensitivity", "assumptions"]] + "_rev5.csv";
 for f = [png, csv]
     verifyTrue(tc, isfile(fullfile(d, f)), f);
 end
-S = readtable(fullfile(d, "vcp_sweep_rev4.csv"), "TextType", "string", "VariableNamingRule", "preserve");
+S = readtable(fullfile(d, "vcp_sweep_rev5.csv"), "TextType", "string", "VariableNamingRule", "preserve");
 verifyEqual(tc, height(S), 75);
-C = readtable(fullfile(d, "convergence_rev4.csv"));
+C = readtable(fullfile(d, "convergence_rev5.csv"));
 verifyEqual(tc, unique(C.n_samples)', ov.n_list);
-L = readtable(fullfile(d, "lobe_pairs_rev4.csv"));
+L = readtable(fullfile(d, "lobe_pairs_rev5.csv"));
 verifyEqual(tc, sum(L.time_pct), 100, "AbsTol", 1e-6);
 % Typed report tables match their sources: NEXRAD 41.99 dBi at 0.5 deg
 % (Step 2), ASR-11 34 dBi on the path (Step 3), worst-mode shares sum to 100.
-Nb = readtable(fullfile(d, "nexrad_gain_by_cut_rev4.csv"));
+Nb = readtable(fullfile(d, "nexrad_gain_by_cut_rev5.csv"));
 verifyEqual(tc, Nb.nexrad_gain_on_path_dBi(Nb.el_deg == 0.5), 45.5 - 12*(0.5/0.925)^2, "AbsTol", 1e-3);
-Ab = readtable(fullfile(d, "asr11_gain_cut_rev4.csv"));
+Ab = readtable(fullfile(d, "asr11_gain_cut_rev5.csv"));
 verifyEqual(tc, Ab.asr11_gain_dBi(1), 34, "AbsTol", 1e-9);
-Wb = readtable(fullfile(d, "worst_mode_weights_rev4.csv"));
+Wb = readtable(fullfile(d, "worst_mode_weights_rev5.csv"));
 verifyEqual(tc, sum(Wb.share_pct), 100, "AbsTol", 1e-9);
-Vt = readtable(fullfile(d, "vcp_table_rev4.csv"));
+Vt = readtable(fullfile(d, "vcp_table_rev5.csv"));
 verifyEqual(tc, height(Vt), 8);
-Ct = readtable(fullfile(d, "call_tree_rev4.csv"), "TextType", "string");
-verifyTrue(tc, any(Ct.caller == "report_figures_rev4" & Ct.callee == "example_nexrad_asr11_rev1"));
+Ct = readtable(fullfile(d, "call_tree_rev5.csv"), "TextType", "string");
+verifyTrue(tc, any(Ct.caller == "report_figures_rev5" & Ct.callee == "example_nexrad_asr11_rev1"));
 verifyTrue(tc, any(Ct.caller == "nexrad_asr11_mag_rev1" & Ct.callee == "radar_mutual_gain_cdf_rev1"));
-A9 = readtable(fullfile(d, "asr9_assumptions_rev4.csv"), "TextType", "string");
+A9 = readtable(fullfile(d, "asr9_assumptions_rev5.csv"), "TextType", "string");
 verifyEqual(tc, A9.value(A9.parameter == "ASR-9 peak gain"), 33.5);
-P = readtable(fullfile(d, "peaks_above_plateau_120h_rev4.csv"));
+P = readtable(fullfile(d, "peaks_above_plateau_120h_rev5.csv"));
 verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end
 
