@@ -9,7 +9,8 @@
 %                        held to 180 deg; no measured back lobe)
 %     ASR-11 pattern     F.1245 (working paper)
 %     ASR-11 remote SL   +0.5 and +6.5 dBi (baseline +3.5 dBi, M.1464-2)
-%     ASR-11 tilt        -2.5 and +2.5 deg (M.1464-2 Radar C range)
+%     ASR-11 tilt        -2.0 and +2.5 deg (M.1464-2 Radar C range is +/-2.5;
+%                        the M.1851-2 CSC^2 model needs a tilt above -2.4)
 %     Path elevation     0.5, 1 and 2 deg at both ends (takeoff angles of a
 %                        transhorizon path; baseline 0)
 %     Rate tolerance     0 and 2 deg/s (baseline 0.5); time series only
@@ -22,6 +23,9 @@ if ~exist("sens_base", "var")
     sens_base = struct("seed", 20261105, "vcp", 212, "sails", 3, "avset_top_deg", 6.4, ...
         "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);
 end
+if exist("example_overrides", "var")
+    sens_base = merge_overrides_rev1(sens_base, example_overrides);
+end
 
 cs = struct("group", {}, "label", {}, "opts", {});
 add = @(cs, g, l, o) [cs, struct("group", g, "label", l, "opts", o)];
@@ -32,7 +36,7 @@ cs = add(cs, "NEXRAD back lobe", "-65 dB", struct("nexrad_back_dB", -65));
 cs = add(cs, "ASR-11 pattern", "F.1245, 34 dBi", struct("asr_pattern", "f1245"));
 cs = add(cs, "ASR-11 remote sidelobe", "+0.5 dBi", struct("asr_remote_sl_dBi", 0.5));
 cs = add(cs, "ASR-11 remote sidelobe", "+6.5 dBi", struct("asr_remote_sl_dBi", 6.5));
-cs = add(cs, "ASR-11 tilt", "-2.5 deg", struct("asr_tilt_deg", -2.5));
+cs = add(cs, "ASR-11 tilt", "-2.0 deg", struct("asr_tilt_deg", -2));
 cs = add(cs, "ASR-11 tilt", "+2.5 deg", struct("asr_tilt_deg", 2.5));
 cs = add(cs, "Path elevation", "0.5 deg", struct("el_path_deg", 0.5));
 cs = add(cs, "Path elevation", "1 deg", struct("el_path_deg", 1));

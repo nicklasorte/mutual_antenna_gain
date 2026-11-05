@@ -11,9 +11,12 @@
 %     vol_max             largest per-volume maximum in the time series
 %     t_low_pct           % of NEXRAD volume time at the 0.5 deg cuts
 
-clear; close all;
+clearvars -except example_overrides; close all;   % example_overrides: small runs (tests)
 
 base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);   % M.2069-0: 5e6 samples
+if exist("example_overrides", "var")
+    base = merge_overrides_rev1(base, example_overrides);
+end
 thr = [40 50 60];                                  % per-revolution thresholds (dBi)
 
 % ---- Case list: VCP and scan options (limits from nexrad_vcp_rev1 / ROC)
@@ -70,6 +73,8 @@ end
 fprintf("%d cases (%d VCP modes and the paper baseline)\n", numel(c), numel(c) - 1);
 
 % ---- Run
+env_pct = [99 99.9 99.99 99.999];
+summ = cell(1, numel(c));
 n = numel(c);
 rows = cell(n, 1);
 res = cell(n, 1);
@@ -80,10 +85,17 @@ for i = 1:n
         o.(f{k}) = c{i}.(f{k});
     end
     r = nexrad_asr11_mag_rev1(o);
-    % Keep memory bounded over many modes: the envelope and figures need
-    % only g21 (= g12 here), in single precision.
-    r.cdf.g21_dBi = single(r.cdf.g21_dBi);
+    % Keep memory bounded over many modes: keep a compact summary for the
+    % envelope (mag_mode_summary_rev1) and drop the samples, except for
+    % the paper baseline and VCP 215, which the figures plot. The worst
+    % mode is rerun after the sweep with the same seed.
+    summ{i} = mag_mode_summary_rev1(r.cdf.g21_dBi, env_pct);
     r.cdf.g12_dBi = [];
+    if i == 1 || c{i}.label == "VCP 215"
+        r.cdf.g21_dBi = single(r.cdf.g21_dBi);
+    else
+        r.cdf.g21_dBi = [];
+    end
     res{i} = r;
     q = r.cdf.pct21;
     R = r.scan_max.asr_rev(r.scan_max.asr_rev.complete, :);
@@ -118,8 +130,19 @@ fprintf("Worst case: p99 %s; p99.9 %s; revolutions >= 50 dBi %s\n", ...
 
 % ---- Envelope over all VCP modes: bounds any mix of modes a site uses
 %      (mag_mode_envelope_rev1), so the unknown mode statistics drop out.
-env = mag_mode_envelope_rev1(cellfun(@(r) r.cdf.g21_dBi, res(2:end), "UniformOutput", false), ...
-    V.case', [99 99.9 99.99 99.999]);
+env = mag_mode_envelope_rev1(summ(2:end), V.case', env_pct);
+
+% ---- Rerun the worst mode (same seed: identical samples) to keep its
+%      samples for the figures.
+o = base;
+f = setdiff(fieldnames(c{1 + i999}), "label");
+for k = 1:numel(f)
+    o.(f{k}) = c{1 + i999}.(f{k});
+end
+rw = nexrad_asr11_mag_rev1(o);
+rw.cdf.g12_dBi = [];
+rw.cdf.g21_dBi = single(rw.cdf.g21_dBi);
+res{1 + i999} = rw;
 fprintf("\nMode envelope (bound for any mix of the %d VCP modes):\n", height(V));
 disp(env.pct(:, ["pct", "envelope_dBi", "worst_mode"]))
 

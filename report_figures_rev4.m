@@ -7,12 +7,14 @@
 %     fig4_exceedance.png         MAG exceedance with reference levels
 %     fig5_max_per_rev.png        maximum MAG per ASR-11 revolution
 %     fig7_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
-%     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, trial 1)
+%     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, the
+%                                 trial with the most peaks above the 45.5 dBi plateau)
 %     fig8_sensitivity.png        MAG change for each antenna and scan assumption
 %     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
 %     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
 %     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
 %     persistence_120h_rev4.csv   runs of consecutive high ASR-11 revolutions
+%     persistence_volume_120h_rev4.csv  runs of consecutive high NEXRAD volumes
 %     sensitivity_sweep_rev4.csv  one-at-a-time sensitivity (example_sensitivity_rev1)
 %     alignment_dwell_rev4.csv    equal and multiple scan rates (example_asr11_drift_rev1)
 %     vcp_sweep_rev4.csv          sweep table (all modes)
@@ -22,11 +24,22 @@
 %   Style: NTIA palette (mid gray context, light blue highlight, purple
 %   second highlight, dark blue text), Times New Roman, 6.5 in wide.
 %   Titles, captions and sources are in the report text, not the images.
+%   A workspace struct example_overrides makes a small run (tests): its
+%   n_samples, duration_s, n_trials apply to every run, and out_dir, n_h
+%   (trials of the long run), long_duration_s (seconds per long-run trial)
+%   and n_list (convergence sample sizes) replace the defaults.
 
 example_nexrad_asr11_rev1;          % defines T, V, res, w, i999, i99
 close all;
 
 out_dir = fullfile(fileparts(mfilename("fullpath")), "docs", "figures");
+n_h = 120;
+n_list = [5e5 5e6 2e7];
+if exist("example_overrides", "var")
+    if isfield(example_overrides, "out_dir"), out_dir = example_overrides.out_dir; end
+    if isfield(example_overrides, "n_h"), n_h = example_overrides.n_h; end
+    if isfield(example_overrides, "n_list"), n_list = example_overrides.n_list; end
+end
 if ~isfolder(out_dir)
     mkdir(out_dir);
 end
@@ -46,18 +59,37 @@ wopt.n_samples = base.n_samples;
 %      90,000 ASR-11 revolutions; a run of two to five days was asked for at
 %      the November 4, 2026 meeting). Same seed as the example, so trial 1
 %      and the random-mode CDF match the sweep.
-n_h = 120;
 o_long = wopt;
 o_long.duration_s = 3600;
+if exist("example_overrides", "var")
+    o_long = merge_overrides_rev1(o_long, example_overrides);
+    if isfield(example_overrides, "long_duration_s")
+        o_long.duration_s = example_overrides.long_duration_s;
+    end
+end
 o_long.n_trials = n_h;
-o_long.keep_ts1 = true;
 wl = nexrad_asr11_mag_rev1(o_long);
 Rl = wl.scan_max.asr_rev(wl.scan_max.asr_rev.complete, :);
+% Trial shown in Figures 5 and 6: the hour with the most peaks above the
+% 45.5 dBi plateau (ties: the largest peak). Rerun only that trial to keep
+% its samples; trial j always uses substream 1000 + j, so it repeats.
+lev_hi = wl.ref_levels.mag_dBi(3) + 1;
+[G, tr] = findgroups(Rl.trial);
+n_pk = splitapply(@(g) sum(g >= lev_hi), Rl.max_g21_dBi, G);
+m_pk = splitapply(@max, Rl.max_g21_dBi, G);
+[~, k_tr] = sortrows([n_pk, m_pk], [-1 -2]);
+j_fig = tr(k_tr(1));
+o_fig = o_long;
+o_fig.first_trial = j_fig;
+o_fig.n_trials = 1;
+o_fig.n_samples = 1e4;                          % the random-mode CDF is not used
+o_fig.keep_ts1 = true;
+wf = nexrad_asr11_mag_rev1(o_fig);
 writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
 writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev4.csv"));
 writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev4.csv"));
 writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev4.csv"));
-lev_hi = wl.ref_levels.mag_dBi(3) + 1;                % above the 45.5 dBi plateau
+writetable(wl.scan_max.persistence_volume, fullfile(out_dir, "persistence_volume_120h_rev4.csv"));
 pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
     "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
     "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
@@ -66,16 +98,15 @@ lv = [wl.ref_levels.mag_dBi(5), 30, 40, wl.ref_levels.mag_dBi(3), 50, 60, 70, wl
 exc = table(lv(:), arrayfun(@(v) sum(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     arrayfun(@(v) 100*mean(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     'VariableNames', ["level_dBi", "revolutions", "pct_of_revolutions"]);
-exc.per_hour = exc.revolutions/n_h;
+exc.per_hour = exc.revolutions/(n_h*o_long.duration_s/3600);
 writetable(exc, fullfile(out_dir, "rev_exceedance_120h_rev4.csv"));
 
 % ---- Sample-size convergence of the time-weighted percentiles (worst mode)
-n_list = [5e5 5e6 2e7];
 cv = cell(numel(n_list), 1);
 for k = 1:numel(n_list)
     o = wopt;
     o.n_samples = n_list(k);
-    o.duration_s = 60;
+    o.duration_s = min(60, base.duration_s);
     o.n_trials = 1;
     r = nexrad_asr11_mag_rev1(o);
     q = r.cdf.pct21(r.cdf.pct21.pct >= 99, :);
@@ -202,7 +233,7 @@ save_fig(f, out_dir, "fig4_exceedance");
 % ---- Figure 5: maximum MAG per ASR-11 revolution, trial 1, peaks labeled ----
 f = new_fig(6.5, 3.4);
 ax = axes(f);
-Rv = wl.scan_max.asr_rev(wl.scan_max.asr_rev.trial == 1 & wl.scan_max.asr_rev.complete, :);
+Rv = wf.scan_max.asr_rev(wf.scan_max.asr_rev.complete, :);   % trial j_fig
 R = wl.ref_levels;
 P = wl.scan_max.plateaus;
 plot(ax, Rv.t_start_s, Rv.max_g21_dBi, "-", "Color", c.blue, "LineWidth", 0.9); hold(ax, "on");
@@ -214,26 +245,28 @@ put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe
 put_label(ax, 3580, lev09 - 2.2, sprintf("NEXRAD main beam at 0.9 deg + ASR-11 back lobe, %.1f dBi", lev09), c.dark, false, "right", "w");
 put_label(ax, 3580, R.mag_dBi(3) - 2.2, sprintf("NEXRAD main beam at 0.5 deg + ASR-11 back lobe, %.1f dBi (%.1f%% of revolutions)", ...
     R.mag_dBi(3), P.simulated_rev_pct(P.el_deg == 0.5)), c.dark, false, "right", "w");
-put_label(ax, 20, R.mag_dBi(1) + 2.5, sprintf("Main beam to main beam, %.1f dBi", R.mag_dBi(1)), c.dark, false, "left", "w");
+put_label(ax, 3580, R.mag_dBi(1) + 1.6, sprintf("Main beam to main beam on the path, %.1f dBi", R.mag_dBi(1)), c.dark, false, "right", "w");
 % Label every peak between the 45.5 dBi plateau and main beam to main beam.
 % Main beam = within 3 dB of that antenna's peak gain on the path (NEXRAD at
 % the cut's tilt).
 pk1 = Rv(Rv.max_g21_dBi >= lev_hi, :);
-yoff = [5.5, 1.8, 4.5, 3, 2];
-for k = 1:height(pk1)
-    txt = peak_text(pk1(k, :), P, wl.ref_levels.asr11_gain_dBi(1));
-    ha = "left"; dx = 40;
-    if pk1.t_start_s(k) > 1800
-        ha = "right"; dx = -40;
-    end
-    put_label(ax, pk1.t_start_s(k) + dx, pk1.max_g21_dBi(k) + yoff(mod(k - 1, 5) + 1), txt, c.blue, true, ha, "w");
+% Mark every peak above the plateau; letter the three largest and explain
+% them in a key (the full list is in peaks_above_plateau_120h_rev4.csv).
+plot(ax, pk1.t_start_s, pk1.max_g21_dBi, "o", "Color", c.purple, "MarkerFaceColor", c.purple, "MarkerSize", 3.5);
+[~, o3] = sort(pk1.max_g21_dBi, "descend");
+o3 = o3(1:min(3, numel(o3)));
+for k = 1:numel(o3)
+    text(ax, pk1.t_start_s(o3(k)), pk1.max_g21_dBi(o3(k)) + 1.6, char(96 + k), "Color", c.purple, ...
+        "FontName", "Times New Roman", "FontSize", 9, "FontWeight", "bold", "HorizontalAlignment", "center");
+    txt = peak_label_rev1(pk1(o3(k), :), P, wl.ref_levels.asr11_gain_dBi(1));
+    put_label(ax, 20, 93 - 3.4*k, sprintf("%c  %s, t = %.0f s", 96 + k, txt, pk1.t_at_max_s(o3(k))), c.purple, false, "left", "w");
 end
-style(ax, c, "Time (s), trial 1", "Maximum MAG per revolution (dBi)", "");
-ylim(ax, [15 85]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
+style(ax, c, sprintf("Time (s), trial %d", j_fig), "Maximum MAG per revolution (dBi)", "");
+ylim(ax, [15 95]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
-% ---- Figure 6: anatomy of the two largest peaks in trial 1 --------------------
-T1 = wl.scan_max.ts1;
+% ---- Figure 6: anatomy of the two largest peaks in trial j_fig ---------------
+T1 = wf.scan_max.ts1;
 [~, o] = sort(pk1.max_g21_dBi, "descend");
 f = new_fig(6.5, 3.0);
 tl = tiledlayout(f, 1, 2, "TileSpacing", "compact", "Padding", "compact");
@@ -306,8 +339,8 @@ xline(ax, 0, "-", "Color", c.dark, "LineWidth", 0.8);
 ax.YTick = flip(yy);
 ax.YTickLabel = flip(Ts.group + ": " + Ts.label);
 xr = max(abs([Ts.d99_9_dB; Ts.d99_999_dB]));
-put_label(ax, xr*0.98, n_s + 0.8, "99.9%", c.blue, true, "right");
-put_label(ax, xr*0.98, n_s + 0.4, "99.999%", c.gray, false, "right");
+put_label(ax, -xr*0.98, n_s + 0.8, "Upper line of each pair: 99.9%", c.blue, true, "left");
+put_label(ax, -xr*0.98, n_s + 0.35, "Lower line: 99.999%", c.gray, false, "left");
 style(ax, c, "Change in MAG from the baseline (dB)", "", "");
 ylim(ax, [0.4 n_s + 1.1]); xlim(ax, [-xr - 1, xr + 1]);
 ax.YGrid = "off";
@@ -316,29 +349,6 @@ save_fig(f, out_dir, "fig8_sensitivity");
 fprintf("Figures and tables written to %s\n", out_dir);
 
 % =========================================================================
-function txt = peak_text(r, P, g_asr_max)
-% Short label: which beams make the peak. "Main beam" = within 3 dB of the
-% antenna's peak gain on the path (the NEXRAD at the cut's tilt).
-g_n_mb = P.nexrad_gain_on_path_dBi(P.el_deg == r.nexrad_el_at_max_deg);
-if isempty(g_n_mb)
-    g_n_mb = NaN;
-end
-n_mb = r.nexrad_gain_at_max_dBi >= g_n_mb - 3;
-a_mb = r.asr11_gain_at_max_dBi >= g_asr_max - 3;
-if n_mb && a_mb
-    txt = sprintf("%.1f dBi: both main beams (NEXRAD %.1f deg cut)", r.max_g21_dBi, r.nexrad_el_at_max_deg);
-elseif a_mb
-    txt = sprintf("%.1f dBi: ASR-11 main beam + NEXRAD %.1f deg cut, beam %.1f deg off path", ...
-        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.nexrad_az_off_at_max_deg));
-elseif n_mb
-    txt = sprintf("%.1f dBi: NEXRAD main beam (%.1f deg cut) + ASR-11 beam %.1f deg off path", ...
-        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.asr11_az_off_at_max_deg));
-else
-    txt = sprintf("%.1f dBi: NEXRAD %.1f deg cut + ASR-11, both off axis", r.max_g21_dBi, r.nexrad_el_at_max_deg);
-end
-end
-
-% -------------------------------------------------------------------------
 function st = state_az(az, tilt)
 z = zeros(numel(az), 1);
 st = struct("mech_az", az(:), "tilt", tilt + z, "steer_az", z, "steer_el", z);

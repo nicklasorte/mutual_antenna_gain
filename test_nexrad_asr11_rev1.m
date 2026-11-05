@@ -392,6 +392,29 @@ verifyTrue(tc, issorted(flipud(env.exceed.envelope_exceed_pct)));
 verifyError(tc, @() mag_mode_envelope_rev1({a}, ["A", "B"]), "radar_coupling:envelopeInput");
 end
 
+function testModeEnvelopeFromSummaries(tc)
+% Envelope from mag_mode_summary_rev1 structs equals the one from samples.
+rs = RandStream("mrg32k3a", "Seed", 4);
+a = 10 + 5*randn(rs, 1e5, 1);
+b = 5 + 9*randn(rs, 1e5, 1);
+p = [90 99 99.9];
+e1 = mag_mode_envelope_rev1({a, b}, ["A", "B"], p);
+e2 = mag_mode_envelope_rev1({mag_mode_summary_rev1(a, p), mag_mode_summary_rev1(b, p)}, ["A", "B"], p);
+verifyEqual(tc, e2.pct.envelope_dBi, e1.pct.envelope_dBi, "AbsTol", 1e-12);
+verifyEqual(tc, e2.pct.worst_mode, e1.pct.worst_mode);
+% Exceedance: same 0.1 dB bins where both grids exist (sample grid is
+% data-anchored at x.x5 edges, as is the summary grid).
+[ok, k] = ismember(round(e1.exceed.gain_dBi*20), round(e2.exceed.gain_dBi*20));
+verifyGreaterThan(tc, mean(ok), 0.99);
+verifyEqual(tc, e2.exceed.envelope_exceed_pct(k(ok)), e1.exceed.envelope_exceed_pct(ok), "AbsTol", 1e-9);
+s = mag_mode_summary_rev1(single(a), p);
+verifyEqual(tc, s.n, 1e5);
+verifyEqual(tc, s.exceed(end), 0);
+verifyError(tc, @() mag_mode_summary_rev1([0; 150], p), "radar_coupling:summaryRange");
+verifyError(tc, @() mag_mode_envelope_rev1({s, a}, ["A", "B"], p), "radar_coupling:envelopeInput");
+verifyError(tc, @() mag_mode_envelope_rev1({s, s}, ["A", "B"], [50 99]), "radar_coupling:envelopeInput");
+end
+
 function testCdfArray(tc)
 % CDF as [percent, MAG dBi], 0 to 100, consistent with the samples.
 out = quick_run(struct("cdf_pct", 0:5:100));
@@ -487,6 +510,9 @@ verifyError(tc, @() quick_run(struct("asr_pattern", "csc")), "radar_coupling:bad
 verifyError(tc, @() quick_run(struct("nexrad_scan", "sector")), "radar_coupling:badNexradScan");
 verifyError(tc, @() quick_run(struct("dt_s", 0.05)), "radar_coupling:badDt");
 verifyError(tc, @() quick_run(struct("asr_tilt_deg", 3)), "radar_coupling:asrTilt");
+% M.1851-2 CSC^2 start angle (tilt + 2.4 deg) must be above 0 deg.
+verifyError(tc, @() quick_run(struct("asr_tilt_deg", -2.4)), "radar_coupling:asrTilt");
+verifyEqual(tc, quick_run(struct("asr_tilt_deg", -2)).sys_asr11.scan.tilt_deg, -2);
 verifyError(tc, @() quick_run(struct("asr_jitter_mode", "per_scan")), "radar_coupling:badJitterMode");
 verifyError(tc, @() quick_run(struct("asr_rate_jitter_deg_s", -1)), "radar_coupling:badJitter");
 end
@@ -535,7 +561,7 @@ verifyLessThanOrEqual(tc, L.max_mag_ts_dBi(isfinite(L.max_mag_ts_dBi)), ...
 end
 
 function testPersistenceConsistent(tc)
-out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 600));
+out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 1500));
 P = out.scan_max.persistence;
 R = out.scan_max.asr_rev(out.scan_max.asr_rev.complete, :);
 for i = 1:height(P)
@@ -548,6 +574,14 @@ verifyTrue(tc, issorted(flip(P.rev_pct)));
 % NEXRAD/ASR-11: each cut crosses the path once, so a 70 dBi revolution
 % (NEXRAD main beam needed) is never followed by another.
 verifyLessThanOrEqual(tc, P.max_run_revs(P.threshold_dBi == 70), 1);
+% Volume runs: the same bookkeeping per complete NEXRAD volume.
+Q = out.scan_max.persistence_volume;
+V = out.scan_max.nexrad_volume(out.scan_max.nexrad_volume.complete, :);
+for i = 1:height(Q)
+    n_hit = sum(V.max_g21_dBi >= Q.threshold_dBi(i));
+    verifyEqual(tc, Q.vol_pct(i), 100*n_hit/height(V), "AbsTol", 1e-9);
+    verifyEqual(tc, Q.n_runs(i)*Q.mean_run_vols(i), n_hit, "AbsTol", 1e-9);
+end
 end
 
 function testSectorScan(tc)
@@ -627,6 +661,17 @@ for k = 1:2
     n_ev = numel(unique(floor(t(hit)/D.joint_period_s)));
     verifyEqual(tc, n_ev, D.events0, "AbsTol", 2, sprintf("case %d", k));
 end
+end
+
+function testFirstTrialRepeatsTrial(tc)
+% Trial j uses substream 1000 + j, so first_trial = 3, n_trials = 1
+% repeats trial 3 of a three-trial run exactly.
+a = quick_run(struct("n_trials", 3, "duration_s", 30));
+b = quick_run(struct("first_trial", 3, "n_trials", 1, "duration_s", 30, "keep_ts1", true));
+A = a.scan_max.asr_rev(a.scan_max.asr_rev.trial == 3, :);
+verifyEqual(tc, b.scan_max.asr_rev, A);
+verifyEqual(tc, max(b.scan_max.ts1.g21_dBi), max(A.max_g21_dBi), "AbsTol", 1e-12);
+verifyError(tc, @() quick_run(struct("first_trial", 0)), "radar_coupling:badFirstTrial");
 end
 
 function testSensitivityFunction(tc)

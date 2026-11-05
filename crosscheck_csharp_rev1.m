@@ -14,7 +14,7 @@
 %     AntennaGainDistributions.cs   DetermineAntennaGainDistribution(), MACD
 %     ScanRateAnalysis.cs           worst-case SRA (per paper Appendix C)
 
-clear;
+clearvars -except example_overrides;
 seed = 20261101;
 rows = {};
 
