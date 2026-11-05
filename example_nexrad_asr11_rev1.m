@@ -1,4 +1,6 @@
 %EXAMPLE_NEXRAD_ASR11_REV1 WSR-88D vs ASR-11 mutual antenna gain, all VCPs.
+%   Ends with an ASR-9 comparison (M.1464-2 Radar B, opts.asr_type =
+%   "asr9") for the paper baseline, VCP 215 and the worst mode.
 %   Runs nexrad_asr11_mag_rev1 for the 2.7 GHz working paper baseline
 %   (F.1245, NEXRAD at 3 rpm on the horizon) and for every operational VCP
 %   with its scan options, then ranks the VCP modes by worst-case MAG.
@@ -154,6 +156,42 @@ disp(w.assumptions)
 disp(w.citations(:, ["key", "url"]))
 disp(w.scan_max.by_elevation)
 disp(w.scan_max.asr_rev_pct)
+
+% ---- ASR-9 comparison (M.1464-2 Radar B: 33.5 dBi, 1.3 x 4.8 deg, +7.3 dBi
+%      first sidelobe). The worst NEXRAD mode depends only on its time at
+%      0.5 deg, not on the airport radar, so the ASR-11 sweep's worst mode,
+%      the paper baseline and VCP 215 are rerun with the same seed.
+i215 = find(T.case == "VCP 215", 1);
+pick9 = unique([1, i215, 1 + i999], "stable");
+rows9 = cell(numel(pick9), 1);
+res9 = cell(numel(pick9), 1);
+for k = 1:numel(pick9)
+    i = pick9(k);
+    o = base;
+    f = setdiff(fieldnames(c{i}), "label");
+    for j = 1:numel(f)
+        o.(f{j}) = c{i}.(f{j});
+    end
+    o.asr_type = "asr9";
+    r9 = nexrad_asr11_mag_rev1(o);
+    r9.cdf.g12_dBi = [];
+    r9.cdf.g21_dBi = [];
+    res9{k} = r9;
+    q9 = r9.cdf.pct21;
+    q11 = res{i}.cdf.pct21;
+    rows9{k} = {string(c{i}.label), ...
+        q11.gain_dBi(q11.pct == 99), q9.gain_dBi(q9.pct == 99), ...
+        q11.gain_dBi(q11.pct == 99.9), q9.gain_dBi(q9.pct == 99.9), ...
+        q11.gain_dBi(q11.pct == 99.99), q9.gain_dBi(q9.pct == 99.99), ...
+        res{i}.ref_levels.mag_dBi(1), r9.ref_levels.mag_dBi(1)};
+    fprintf("%-34s ASR-9 done\n", c{i}.label);
+end
+T9 = cell2table(vertcat(rows9{:}), "VariableNames", ["case", "p99_asr11", "p99_asr9", ...
+    "p99_9_asr11", "p99_9_asr9", "p99_99_asr11", "p99_99_asr9", "mbmb_asr11", "mbmb_asr9"]);
+fprintf("\nASR-11 vs ASR-9 MAG (dBi); mbmb = main beam to main beam on the path:\n");
+disp(T9)
+fprintf("\nASR-9 reference levels, %s:\n", V.case(i999));
+disp(res9{end}.ref_levels(:, ["combination", "mag_dBi", "time_exceeded_pct"]))
 
 % ---- Plots
 figure("Name", "MAG exceedance by mode");

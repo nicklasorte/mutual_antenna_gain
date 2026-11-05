@@ -689,6 +689,50 @@ verifyError(tc, @() mag_sensitivity_rev1(b, struct("label", "x")), "radar_coupli
 end
 
 % =========================================================================
+% ASR-9 (M.1464-2 Radar B)
+% =========================================================================
+function testAsr9PatternValues(tc)
+out = quick_run(struct("asr_type", "asr9"));
+verifyEqual(tc, out.sys_asr11.name, "ASR-9");
+p = antenna_prepare_rev1(out.sys_asr11.tx);
+z = zeros(4, 1);
+st = struct("mech_az", z, "tilt", z, "steer_az", z, "steer_el", z);
+g = antenna_gain_rev1(p, 0, [0; 10; 20; 0], st);
+verifyEqual(tc, g(1), 33.5, "AbsTol", 1e-9);                     % M.1464-2 Radar B peak
+verifyEqual(tc, g(2) - g(3), 20*log10(sind(20)/sind(10)), "AbsTol", 1e-9);  % CSC^2 slope to +30 deg
+st.mech_az = [0.65; 180; 90; 0];
+g = antenna_gain_rev1(p, 0, 0, st);
+verifyEqual(tc, g(1), 30.5, "AbsTol", 0.1);  % half of the 1.3 deg beamwidth: about -3 dB
+verifyEqual(tc, g(2:3), [3.5; 3.5], "AbsTol", 1e-9);           % remote sidelobes +3.5 dBi (Radar C value)
+verifyEqual(tc, p.az_cut.n, 1);                                  % -26.2 dB first SL: cosine taper (M.1851-2 Table 9)
+end
+
+function testAsr9RefLevelsHandValues(tc)
+out = quick_run(struct("asr_type", "asr9"));
+R = out.ref_levels;
+g_n_mb = 45.5 - 12*(0.5/0.925)^2;            % NEXRAD main beam on path at 0.5 deg tilt
+verifyEqual(tc, R.asr11_gain_dBi(1), 33.5, "AbsTol", 1e-9);
+verifyEqual(tc, R.mag_dBi(1), g_n_mb + 33.5, "AbsTol", 1e-3);   % main beam to main beam
+verifyEqual(tc, R.mag_dBi(3), g_n_mb + 3.5, "AbsTol", 1e-3);    % + ASR-9 remote sidelobe
+verifyEqual(tc, R.mag_dBi(5), 33.5 + 45.5 - 55, "AbsTol", 1e-6);  % ASR-9 main beam + NEXRAD back
+verifyTrue(tc, all(contains(R.combination(2:5), "ASR-9")));
+verifyLessThanOrEqual(tc, R.asr11_gain_dBi(2), 33.5 - 20);      % near sidelobe below the taper bound
+end
+
+function testAsr9OptsAndAssumptions(tc)
+verifyError(tc, @() quick_run(struct("asr_type", "asr8")), "radar_coupling:badAsrType");
+% ASR-9 first sidelobe is +7.3 dBi: a remote level above it is rejected.
+verifyError(tc, @() quick_run(struct("asr_type", "asr9", "asr_remote_sl_dBi", 8)), "radar_coupling:badRemote");
+verifyEqual(tc, quick_run(struct("asr_remote_sl_dBi", 8)).sys_asr11.name, "ASR-11");  % allowed for ASR-11 (+9.5)
+% Paper model: F.1245 at 34 dBi for both (WP_REV3 Table 4.4-1).
+f = quick_run(struct("asr_type", "asr9", "asr_pattern", "f1245"));
+verifyEqual(tc, f.sys_asr11.tx.g_max_dBi, 34);
+A = quick_run(struct("asr_type", "asr9")).assumptions;
+verifyTrue(tc, any(startsWith(A.parameter, "ASR-9")));
+verifyTrue(tc, all(A.source(startsWith(A.parameter, "ASR-9")) ~= ""));
+end
+
+% =========================================================================
 function out = quick_run(o)
 % Small run for tests; fields of o override.
 d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1);
