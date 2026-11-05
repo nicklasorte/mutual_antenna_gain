@@ -148,11 +148,12 @@ ov.long_duration_s = 1200;                      % 1 h in all: peaks above the pl
 ov.n_list = [1e4 2e4];
 run_script("report_figures_rev4", ov);
 png = "fig" + ["1_antenna_patterns", "2_vcp_schedule", "3_low_tilt_driver", "4_exceedance", ...
-    "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity"] + ".png";
+    "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity", "_a1_call_tree"] + ".png";
 csv = ["vcp_sweep", "ref_levels", "by_elevation", "asr_rev_pct", "sensitivity", "plateaus", ...
     "asr_rev_pct_120h", "lobe_pairs", "persistence_120h", "persistence_volume_120h", "peaks_above_plateau_120h", ...
     "rev_exceedance_120h", "convergence", "mode_envelope", "sensitivity_sweep", ...
-    "alignment_dwell", "cdf_array", "mbmb_vs_statistical"] + "_rev4.csv";
+    "alignment_dwell", "cdf_array", "mbmb_vs_statistical", "case1_percentiles", "vcp_table", ...
+    "worst_mode_weights", "nexrad_gain_by_cut", "asr11_gain_cut", "call_tree"] + "_rev4.csv";
 for f = [png, csv]
     verifyTrue(tc, isfile(fullfile(d, f)), f);
 end
@@ -162,6 +163,19 @@ C = readtable(fullfile(d, "convergence_rev4.csv"));
 verifyEqual(tc, unique(C.n_samples)', ov.n_list);
 L = readtable(fullfile(d, "lobe_pairs_rev4.csv"));
 verifyEqual(tc, sum(L.time_pct), 100, "AbsTol", 1e-6);
+% Typed report tables match their sources: NEXRAD 41.99 dBi at 0.5 deg
+% (Step 2), ASR-11 34 dBi on the path (Step 3), worst-mode shares sum to 100.
+Nb = readtable(fullfile(d, "nexrad_gain_by_cut_rev4.csv"));
+verifyEqual(tc, Nb.nexrad_gain_on_path_dBi(Nb.el_deg == 0.5), 45.5 - 12*(0.5/0.925)^2, "AbsTol", 1e-3);
+Ab = readtable(fullfile(d, "asr11_gain_cut_rev4.csv"));
+verifyEqual(tc, Ab.asr11_gain_dBi(1), 34, "AbsTol", 1e-9);
+Wb = readtable(fullfile(d, "worst_mode_weights_rev4.csv"));
+verifyEqual(tc, sum(Wb.share_pct), 100, "AbsTol", 1e-9);
+Vt = readtable(fullfile(d, "vcp_table_rev4.csv"));
+verifyEqual(tc, height(Vt), 8);
+Ct = readtable(fullfile(d, "call_tree_rev4.csv"), "TextType", "string");
+verifyTrue(tc, any(Ct.caller == "report_figures_rev4" & Ct.callee == "example_nexrad_asr11_rev1"));
+verifyTrue(tc, any(Ct.caller == "nexrad_asr11_mag_rev1" & Ct.callee == "radar_mutual_gain_cdf_rev1"));
 P = readtable(fullfile(d, "peaks_above_plateau_120h_rev4.csv"));
 verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end

@@ -176,6 +176,8 @@ When the NEXRAD beam azimuth is on the path (Δaz = 0), γ equals the tilt. The 
 | 6.4° | −2.7 | Sidelobe envelope |
 | 8.0° to 19.5° | −3.5 to −9.25 | Far sidelobes |
 
+Source: `docs/figures/nexrad_gain_by_cut_rev4.csv`.
+
 The NEXRAD main beam reaches the ASR-11 strongly only on the 0.5°, 0.9°, and 1.3° cuts. Above 1.3°, a horizontal path is in the NEXRAD sidelobes even when the beam azimuth points at the ASR-11.
 
 ### 7.4 Step 3: Find the ASR-11 gain toward the NEXRAD
@@ -189,6 +191,8 @@ The ASR-11 beam points at azimuth offset Δaz_A from the path. Its tilt is 0°, 
 | 2.9° (two beamwidths, near sidelobe region) | 7.2 |
 | Far from the path, out to 180° | 3.5 (remote sidelobe floor) |
 
+Source: `docs/figures/asr11_gain_cut_rev4.csv`.
+
 ### 7.5 Step 4: Add the two gains for one pointing state
 
 The MAG for one pointing state is the sum of the two gains, Equation 2. Two pointing states from trial 61 of the time series in Step 7 show the arithmetic.
@@ -198,7 +202,7 @@ The MAG for one pointing state is the sum of the two gains, Equation 2. Two poin
 | A, t = 3,346.33 s | 0.5° | 0.035° | 0.501° | 41.98 | 0.001° | 34.00 | 75.98 |
 | B, t = 143.84 s | 0.9° | 0.074° | 0.903° | 34.06 | 0.066° | 33.98 | 68.04 |
 
-For state B: γ = arccos(cos 0.9° · cos 0.074°) = 0.903°, and 45.5 − 12(0.903/0.925)² = 45.5 − 11.44 = 34.06 dBi.
+For state B: γ = arccos(cos 0.9° · cos 0.074°) = 0.903°, and 45.5 − 12(0.903/0.925)² = 45.5 − 11.44 = 34.06 dBi. Both states are rows of `docs/figures/peaks_above_plateau_120h_rev4.csv` (trial 61).
 
 Four limiting combinations frame every result in this section.[^18]
 
@@ -235,6 +239,8 @@ Each cut is one full revolution at the cut's azimuth rate, so the cut lasts 360�
 | 32 | Clear air, short pulse, 0.5° to 4.5° | 7 | 569.0 | 26.7 | None |
 | 34 | Clear air, long pulse, 0.5° to 4.5° | 10 | 524.4 | 21.7 | 1 |
 
+Source: `docs/figures/vcp_table_rev4.csv`.
+
 The clear-air VCPs rotate slowly (4 to 8.5 degrees per second), so their volumes take 8.7 to 9.5 minutes. A slow rotation lengthens each cut but not its share of the volume, so time at 0.5° stays in the same range as for the precipitation VCPs.
 
 SAILS adds rescans of the 0.5° cuts during the volume. MRLE rescans the lowest two to four elevations midway through the volume. AVSET ends the volume at 6.4° or above when no significant echoes lie above that elevation. The ROC VCP Info Sheet lists AVSET as compatible with SAILS and with MRLE; only SAILS and MRLE cannot be combined. The model runs every allowed combination (Step 9).[^35]
@@ -248,6 +254,8 @@ The worst mode in Step 9 is VCP 212 with three SAILS rescans and AVSET ending th
 | 1.3° | 2 | 23.027 and 12.524 | 44.38 | 12.55 |
 | 1.8° to 6.4° (6 elevations) | 1 each | 26.389 to 28.224 | 12.76 to 13.64 each | 3.61 to 3.86 each |
 | Total | 18 | | 353.69 | 100 |
+
+Source: `docs/figures/worst_mode_weights_rev4.csv`.
 
 For example, one 0.5° surveillance cut lasts 360/21.149 = 17.02 s and one 0.5° Doppler cut lasts 360/12.524 = 28.74 s. Four of each give 4 × (17.02 + 28.74) = 183.07 s, which is 183.07/353.69 = 51.76% of the volume. Figure 2 shows the schedule.
 
@@ -333,6 +341,8 @@ For the NEXRAD, interference on its lowest cuts matters most, because the compos
 | 1.8° | 40 | 24.5 | 44.5 |
 | 2.4° | 40 | 24.5 | 41.5 |
 | 3.1° to 6.4° | 40 to 41 each | 24.5 | 31.3 to 38.0 |
+
+Source: `docs/figures/by_elevation_rev4.csv`.
 
 #### Which parts of the two patterns couple
 
@@ -463,7 +473,7 @@ Both parts of the method use samples, so both have sampling error.
 
 With 5,000,000 samples, the 99%, 99.9%, and 99.99% values are known to within 0.2 dB, so more samples do not change them. The 99.999% value has only 50 samples above it, and its interval spans 4.2 dB. A link budget that uses the 99.999% MAG needs 20,000,000 samples or more, or should quote the interval.
 
-**Time series.** The per-revolution statistics depend on rare events, so they need a long run. Four hours (about 3,000 revolutions) gave a 99.9th percentile of the per-revolution maximum of 70.4 dBi; 120 hours (89,883 revolutions) gave 74.5 dBi. Four hours contained no revolution within 0.2 dB of main beam to main beam; 120 hours contained 46. Only the long run caught the volume locks of Step 8. Per-scan results in this report therefore use the 120-hour run.
+**Time series.** The per-revolution statistics depend on rare events, so they need a long run. Four hours (about 3,000 revolutions) gave a 99.9th percentile of the per-revolution maximum of 70.4 dBi; 120 hours (89,883 revolutions) gave 74.5 dBi (`docs/figures/asr_rev_pct_rev4.csv` and `asr_rev_pct_120h_rev4.csv`). Four hours contained no revolution within 0.2 dB of main beam to main beam; 120 hours contained 46. Only the long run caught the volume locks of Step 8. Per-scan results in this report therefore use the 120-hour run.
 
 ## 8. Sensitivity
 
@@ -595,7 +605,7 @@ These checks test the implementation. They do not validate the model.
 - The alignment dwell matches a brute-force count of aligned periods for a 1:1 and a 2:1 rate pair within two periods, and its probabilities match closed forms.
 - At every per-revolution maximum, the MAG equals the recorded NEXRAD gain plus the recorded ASR-11 gain, and the two worked pointing states of Step 4 reproduce by hand to 0.01 dB.
 - The hand count of the 45.49 dBi and 37.64 dBi plateaus matches the simulated share of revolutions within 0.8 percentage points (Section 7.9).
-- A rerun of Case 1 (random mode, seed 20261101, 5 million samples) with Radar D gave the percentiles in the table below. The 50th percentile (−11.15 dBi) equals the sum of the two back-region levels (−5.75 dBi and −5.4 dBi).
+- A rerun of Case 1 (random mode, seed 20261101, 5 million samples) with Radar D gave the percentiles in the table below (`docs/figures/case1_percentiles_rev4.csv`). The 50th percentile (−11.15 dBi) equals the sum of the two back-region levels (−5.75 dBi and −5.4 dBi).
 
 | Percentile | Mutual gain, path 2 to 1 (dBi) | Samples above |
 | --- | --- | --- |
@@ -654,29 +664,9 @@ Files in scope:
 - `report_figures_rev4.m`: figures and CSV tables for this report.
 - `test_radar_mutual_gain_cdf_rev1.m`, `test_nexrad_asr11_rev1.m`, `test_scripts_rev1.m`, `test_validation_rev1.m`, and `crosscheck_csharp_rev1.m`: test code.
 
-```mermaid
-graph TD
-  E1[example_radar_mutual_gain_rev1] --> R[radar_mutual_gain_cdf_rev1]
-  E2[example_nexrad_asr11_rev1] --> N[nexrad_asr11_mag_rev1]
-  E2 --> ENV[mag_mode_envelope_rev1]
-  E2 --> SUM[mag_mode_summary_rev1]
-  F[report_figures_rev4] --> E2
-  F --> ES[example_sensitivity_rev1]
-  F --> ED[example_asr11_drift_rev1]
-  F --> PL[peak_label_rev1]
-  ES --> MS[mag_sensitivity_rev1]
-  MS --> N
-  ED --> AD[alignment_dwell_rev1]
-  ED --> V
-  N --> V[nexrad_vcp_rev1]
-  N --> R
-  N --> P[antenna_prepare_rev1]
-  N --> G[antenna_gain_rev1]
-  R --> P
-  R --> G
-  P --> M[m1851_rect_field_rev1]
-  G --> M
-```
+![Call tree of the MATLAB functions behind this report, drawn as a layered graph from the entry points at the top to the antenna functions at the bottom.](figures/fig_a1_call_tree.png)
+
+*Figure A-1. Call tree of the repository functions: direct calls only, read from the code with `matlab.codetools.requiredFilesAndProducts`. Tests and the small-run helper `merge_overrides_rev1` are left out. Source: `report_figures_rev4.m` and `docs/figures/call_tree_rev4.csv` (2026).*
 
 ## Appendix B. Numbers ledger
 
