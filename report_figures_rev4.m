@@ -7,9 +7,14 @@
 %     fig4_exceedance.png         MAG exceedance with reference levels
 %     fig5_max_per_rev.png        maximum MAG per ASR-11 revolution
 %     fig7_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
-%     fig6_peak_anatomy.png       gains around the two largest peaks (72 h run, trial 1)
-%     plateaus_rev4.csv, peaks_above_plateau_72h_rev4.csv, rev_exceedance_72h_rev4.csv,
-%     asr_rev_pct_72h_rev4.csv, convergence_rev4.csv
+%     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, trial 1)
+%     fig8_sensitivity.png        MAG change for each antenna and scan assumption
+%     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
+%     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
+%     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
+%     persistence_120h_rev4.csv   runs of consecutive high ASR-11 revolutions
+%     sensitivity_sweep_rev4.csv  one-at-a-time sensitivity (example_sensitivity_rev1)
+%     alignment_dwell_rev4.csv    equal and multiple scan rates (example_asr11_drift_rev1)
 %     vcp_sweep_rev4.csv          sweep table (all modes)
 %     ref_levels_rev4.csv, by_elevation_rev4.csv, asr_rev_pct_rev4.csv,
 %     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
@@ -31,42 +36,66 @@ writetable(w.scan_max.by_elevation, fullfile(out_dir, "by_elevation_rev4.csv"));
 writetable(w.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_rev4.csv"));
 writetable(w.sensitivity, fullfile(out_dir, "sensitivity_rev4.csv"));
 
-% ---- Worst mode, long time series: 72 trials of 1 h (72 h, about 54,000
-%      ASR-11 revolutions). Same seed as the example, so trial 1 and the
-%      random-mode CDF match the sweep.
-o_long = struct("seed", base.seed, "vcp", 212, "sails", 3, "n_samples", base.n_samples, ...
-    "duration_s", 3600, "n_trials", 72, "keep_ts1", true);
+% ---- Worst mode (99.9% MAG) options, from the sweep case list
+i_w = 1 + i999;                     % worst mode in res, T and c
+wopt = rmfield(c{i_w}, "label");
+wopt.seed = base.seed;
+wopt.n_samples = base.n_samples;
+
+% ---- Worst mode, long time series: 120 trials of 1 h (5 days, about
+%      90,000 ASR-11 revolutions; a run of two to five days was asked for at
+%      the November 4, 2026 meeting). Same seed as the example, so trial 1
+%      and the random-mode CDF match the sweep.
+n_h = 120;
+o_long = wopt;
+o_long.duration_s = 3600;
+o_long.n_trials = n_h;
+o_long.keep_ts1 = true;
 wl = nexrad_asr11_mag_rev1(o_long);
 Rl = wl.scan_max.asr_rev(wl.scan_max.asr_rev.complete, :);
 writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
-writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_72h_rev4.csv"));
+writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_120h_rev4.csv"));
+writetable(wl.lobe_pairs, fullfile(out_dir, "lobe_pairs_rev4.csv"));
+writetable(wl.scan_max.persistence, fullfile(out_dir, "persistence_120h_rev4.csv"));
 lev_hi = wl.ref_levels.mag_dBi(3) + 1;                % above the 45.5 dBi plateau
 pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
     "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
     "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
-writetable(sortrows(pk, "max_g21_dBi", "descend"), fullfile(out_dir, "peaks_above_plateau_72h_rev4.csv"));
+writetable(sortrows(pk, "max_g21_dBi", "descend"), fullfile(out_dir, "peaks_above_plateau_120h_rev4.csv"));
 lv = [wl.ref_levels.mag_dBi(5), 30, 40, wl.ref_levels.mag_dBi(3), 50, 60, 70, wl.ref_levels.mag_dBi(1) - 0.2];
 exc = table(lv(:), arrayfun(@(v) sum(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     arrayfun(@(v) 100*mean(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
     'VariableNames', ["level_dBi", "revolutions", "pct_of_revolutions"]);
-exc.per_hour = exc.revolutions/72;
-writetable(exc, fullfile(out_dir, "rev_exceedance_72h_rev4.csv"));
+exc.per_hour = exc.revolutions/n_h;
+writetable(exc, fullfile(out_dir, "rev_exceedance_120h_rev4.csv"));
 
 % ---- Sample-size convergence of the time-weighted percentiles (worst mode)
 n_list = [5e5 5e6 2e7];
 cv = cell(numel(n_list), 1);
 for k = 1:numel(n_list)
-    r = nexrad_asr11_mag_rev1(struct("seed", base.seed, "vcp", 212, "sails", 3, ...
-        "n_samples", n_list(k), "duration_s", 60, "n_trials", 1));
+    o = wopt;
+    o.n_samples = n_list(k);
+    o.duration_s = 60;
+    o.n_trials = 1;
+    r = nexrad_asr11_mag_rev1(o);
     q = r.cdf.pct21(r.cdf.pct21.pct >= 99, :);
     cv{k} = [table(n_list(k) + zeros(height(q), 1), 'VariableNames', "n_samples"), q];
 end
 writetable(vertcat(cv{:}), fullfile(out_dir, "convergence_rev4.csv"));
 writetable(env.pct, fullfile(out_dir, "mode_envelope_rev4.csv"));
 
+% ---- Sensitivity (one assumption at a time, from the worst mode) and
+%      alignment of equal or multiple scan rates
+sens_base = wopt;
+sens_base.duration_s = base.duration_s;
+sens_base.n_trials = base.n_trials;
+example_sensitivity_rev1;           % defines Tsens
+writetable(Tsens, fullfile(out_dir, "sensitivity_sweep_rev4.csv"));
+example_asr11_drift_rev1;           % defines Tdrift
+writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev4.csv"));
+
 c = struct("dark", [22 51 83]/255, "blue", [86 116 196]/255, ...
     "purple", [110 79 146]/255, "gray", [138 141 145]/255, "grid", [230 230 230]/255);
-i_w = 1 + i999;                     % worst mode (99.9%) in res and T
 i_p = 1;                            % paper baseline
 i_215 = find(T.case == "VCP 215");
 worst = T.case(i_w);
@@ -260,6 +289,29 @@ writetable([table(repmat(T.case(i_p), height(Sp), 1), 'VariableNames', "case"), 
     table(repmat(T.case(i_215), height(S215), 1), 'VariableNames', "case"), S215; ...
     table(repmat(worst, height(Sw), 1), 'VariableNames', "case"), Sw], ...
     fullfile(out_dir, "mbmb_vs_statistical_rev4.csv"));
+
+% ---- Figure 8: sensitivity, change in MAG at 99.9% and 99.999% -------------
+f = new_fig(6.5, 4.2);
+ax = axes(f);
+Ts = Tsens(2:end, :);
+n_s = height(Ts);
+yy = (n_s:-1:1)';
+for k = 1:n_s
+    plot(ax, [0 Ts.d99_9_dB(k)], yy(k) + 0.15*[1 1], "-", "Color", c.blue, "LineWidth", 2.2); hold(ax, "on");
+    plot(ax, [0 Ts.d99_999_dB(k)], yy(k) - 0.15*[1 1], "-", "Color", c.gray, "LineWidth", 2.2);
+end
+plot(ax, Ts.d99_9_dB, yy + 0.15, "o", "Color", c.blue, "MarkerFaceColor", c.blue, "MarkerSize", 4);
+plot(ax, Ts.d99_999_dB, yy - 0.15, "o", "Color", c.gray, "MarkerFaceColor", c.gray, "MarkerSize", 4);
+xline(ax, 0, "-", "Color", c.dark, "LineWidth", 0.8);
+ax.YTick = flip(yy);
+ax.YTickLabel = flip(Ts.group + ": " + Ts.label);
+xr = max(abs([Ts.d99_9_dB; Ts.d99_999_dB]));
+put_label(ax, xr*0.98, n_s + 0.8, "99.9%", c.blue, true, "right");
+put_label(ax, xr*0.98, n_s + 0.4, "99.999%", c.gray, false, "right");
+style(ax, c, "Change in MAG from the baseline (dB)", "", "");
+ylim(ax, [0.4 n_s + 1.1]); xlim(ax, [-xr - 1, xr + 1]);
+ax.YGrid = "off";
+save_fig(f, out_dir, "fig8_sensitivity");
 
 fprintf("Figures and tables written to %s\n", out_dir);
 

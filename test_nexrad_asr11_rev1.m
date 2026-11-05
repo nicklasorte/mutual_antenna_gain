@@ -220,7 +220,7 @@ out = quick_run(struct());
 C = out.citations;
 src = unique(out.assumptions.source(out.assumptions.source ~= ""));
 verifyTrue(tc, all(ismember(src, C.key)), "every assumption source has a citation");
-web = C.key ~= "WP_REV3";
+web = ~ismember(C.key, ["WP_REV3" "LOE_20261104"]);
 verifyTrue(tc, all(startsWith(C.url(web), "https://")), "every public source has an https URL");
 verifyEqual(tc, numel(unique(C.key)), height(C));
 end
@@ -489,6 +489,158 @@ verifyError(tc, @() quick_run(struct("dt_s", 0.05)), "radar_coupling:badDt");
 verifyError(tc, @() quick_run(struct("asr_tilt_deg", 3)), "radar_coupling:asrTilt");
 verifyError(tc, @() quick_run(struct("asr_jitter_mode", "per_scan")), "radar_coupling:badJitterMode");
 verifyError(tc, @() quick_run(struct("asr_rate_jitter_deg_s", -1)), "radar_coupling:badJitter");
+end
+
+% =========================================================================
+% Antenna concerns, 2.7 GHz Retuning LOE meeting of November 4, 2026
+% =========================================================================
+function testCombinedAvsetSailsAllowed(tc)
+% ROC VCP Info Sheet: AVSET is compatible with SAILS and MRLE.
+s = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4);
+b = nexrad_vcp_rev1(212, sails=3);
+hi = b.cuts.el_deg > 6.4;
+verifyEqual(tc, s.volume_s, b.volume_s - sum(b.cuts.dur_s(hi)), "AbsTol", 1e-9);
+share = 100*sum(s.cuts.dur_s(s.cuts.el_deg == 0.5))/s.volume_s;
+verifyEqual(tc, share, 100*183.07/s.volume_s, "AbsTol", 0.01);   % Step 5: 183.07 s at 0.5 deg
+verifyGreaterThan(tc, share, 100*sum(b.cuts.dur_s(b.cuts.el_deg == 0.5))/b.volume_s);
+m = nexrad_vcp_rev1(215, mrle=3, avset_top_deg=6.4);
+verifyLessThan(tc, max(m.tilt_deg), 6.4 + 1e-9);
+end
+
+function testLobePairsSumAndHandValue(tc)
+out = quick_run(struct("vcp", 212, "sails", 3, "n_samples", 2e4, "duration_s", 300));
+L = out.lobe_pairs;
+E = L.Properties.UserData;
+verifyEqual(tc, height(L), 16);
+verifyEqual(tc, sum(L.time_pct), 100, "AbsTol", 1e-6);
+verifyEqual(tc, sum(L.time_pct_ts), 100, "AbsTol", 1e-6);
+% Main-beam edges: NEXRAD main beam meets the -35 dB first sidelobe at
+% 0.925*sqrt(35/12) deg; the ASR-11 main beam ends at the -24.5 dB level.
+verifyEqual(tc, E.nexrad(1), 0.925*sqrt(35/12), "AbsTol", 2e-3);
+verifyGreaterThan(tc, E.asr11(1), 1.45/2);
+verifyLessThan(tc, E.asr11(1), E.asr11(2));
+% Hand count of main beam to main beam time: NEXRAD cut at tilt e is in
+% its main beam for |daz| <= acos(cos(edge)/cos(e)); ASR-11 for |daz| <= edge.
+s = out.sys_nexrad.scan;
+w = s.cuts.dur_s/s.volume_s;
+c = cosd(E.nexrad(1))./cosd(s.cuts.el_deg);
+fN = sum(w(c <= 1).*2.*acosd(c(c <= 1))/360);
+fA = 2*E.asr11(1)/360;
+mm = L.nexrad_region == "main beam" & L.asr11_region == "main beam";
+verifyEqual(tc, L.time_pct(mm), 100*fN*fA, "RelTol", 2e-3);
+% Largest MB-MB MAG is main beam to main beam on the path (Step 4)
+verifyEqual(tc, L.max_mag_dBi(mm), out.ref_levels.mag_dBi(1), "AbsTol", 0.01);
+verifyLessThanOrEqual(tc, L.max_mag_ts_dBi(isfinite(L.max_mag_ts_dBi)), ...
+    L.max_mag_dBi(isfinite(L.max_mag_ts_dBi)) + 0.01);   % 0.002 deg grid of the exact maxima
+end
+
+function testPersistenceConsistent(tc)
+out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 600));
+P = out.scan_max.persistence;
+R = out.scan_max.asr_rev(out.scan_max.asr_rev.complete, :);
+for i = 1:height(P)
+    n_hit = sum(R.max_g21_dBi >= P.threshold_dBi(i));
+    verifyEqual(tc, P.rev_pct(i), 100*n_hit/height(R), "AbsTol", 1e-9);
+    verifyEqual(tc, P.n_runs(i)*P.mean_run_revs(i), n_hit, "AbsTol", 1e-9);
+    verifyLessThanOrEqual(tc, P.max_run_revs(i), n_hit);
+end
+verifyTrue(tc, issorted(flip(P.rev_pct)));
+% NEXRAD/ASR-11: each cut crosses the path once, so a 70 dBi revolution
+% (NEXRAD main beam needed) is never followed by another.
+verifyLessThanOrEqual(tc, P.max_run_revs(P.threshold_dBi == 70), 1);
+end
+
+function testSectorScan(tc)
+a = quick_run(struct("vcp", 35));
+b = quick_run(struct("vcp", 35, "nexrad_sector_deg", 360));
+verifyEqual(tc, b.cdf.g21_dBi, a.cdf.g21_dBi);      % full sector is the default
+n = quick_run(struct("vcp", 35, "nexrad_sector_deg", 20, "n_samples", 1e5));
+verifyGreaterThan(tc, n.cdf.pct21.gain_dBi(n.cdf.pct21.pct == 99), a.cdf.pct21.gain_dBi(a.cdf.pct21.pct == 99));
+% NEXRAD main-beam time share scales with 360/sector
+fm = @(o) sum(o.lobe_pairs.time_pct(o.lobe_pairs.nexrad_region == "main beam"));
+verifyEqual(tc, fm(n)/fm(a), 360/20, "RelTol", 1e-3);
+verifyEqual(tc, n.sys_nexrad.scan.sector_deg, 20);
+verifyError(tc, @() quick_run(struct("nexrad_sector_deg", 0)), "radar_coupling:badSector");
+verifyError(tc, @() quick_run(struct("nexrad_sector_deg", 400)), "radar_coupling:badSector");
+end
+
+function testBackLobeAndRemoteSidelobeKnobs(tc)
+b = quick_run(struct("nexrad_back_dB", -45));
+r = b.ref_levels;
+verifyEqual(tc, r.mag_dBi(r.combination == "ASR-11 main beam + NEXRAD back lobe"), 34 + 45.5 - 45, "AbsTol", 1e-6);
+a = quick_run(struct("asr_remote_sl_dBi", 6.5));
+r = a.ref_levels;
+verifyEqual(tc, r.asr11_gain_dBi(r.combination == "NEXRAD main beam + ASR-11 back lobe"), 6.5, "AbsTol", 1e-6);
+d = quick_run(struct());
+verifyEqual(tc, d.ref_levels.mag_dBi(5), 24.5, "AbsTol", 1e-6);        % defaults unchanged
+verifyError(tc, @() quick_run(struct("nexrad_back_dB", -45, "nexrad_pattern", "roc_spec")), "radar_coupling:backNeedsNssl");
+verifyError(tc, @() quick_run(struct("nexrad_back_dB", -30)), "radar_coupling:badBack");
+verifyError(tc, @() quick_run(struct("asr_remote_sl_dBi", 6.5, "asr_pattern", "f1245")), "radar_coupling:remoteNeedsM1851");
+verifyError(tc, @() quick_run(struct("asr_remote_sl_dBi", 12)), "radar_coupling:badRemote");
+end
+
+function testPriorPracticeAssumptionsRecorded(tc)
+A = quick_run(struct()).assumptions;
+k = startsWith(A.parameter, "Prior practice") | startsWith(A.parameter, "Current FAA practice");
+verifyGreaterThanOrEqual(tc, sum(k), 5);
+verifyTrue(tc, all(A.source(k) == "LOE_20261104"));
+verifyEqual(tc, A.value(A.parameter == "NEXRAD far-field distance"), 2*8.53^2*2850e6/physconst("LightSpeed"), "RelTol", 1e-12);
+end
+
+function testAlignmentDwellHandValues(tc)
+% Equal rates, offsets U(+/-0.5) each: delta is triangular on +/-1 deg/s,
+% so P(|delta| < a) = 1 - (1 - a)^2.
+D = alignment_dwell_rev1(75, 75, 1.45, 1.45);
+verifyEqual(tc, D.ratio, [1 1]);
+verifyEqual(tc, D.window_deg, 2.9);
+verifyEqual(tc, D.episode0_s, Inf);
+a = 2.9./D.p_exceed.t_s;
+verifyEqual(tc, D.p_exceed.p_episode_longer, 1 - (1 - a).^2, "AbsTol", 1e-12);
+% 2:1: delta = d1 - 2*d2, density 1/2 at 0, so P ~ a for small a.
+D2 = alignment_dwell_rev1(75, 37.5, 1.45, 1.45);
+verifyEqual(tc, D2.ratio, [2 1]);
+verifyEqual(tc, D2.joint_period_s, 9.6, "AbsTol", 1e-12);
+verifyEqual(tc, D2.window_deg, 4.35, "AbsTol", 1e-12);
+verifyEqual(tc, D2.p_exceed.p_episode_longer(3), 4.35/3600, "RelTol", 1e-9);
+% No jitter, nominal drift 0.01 deg/s: episode = W / delta
+D3 = alignment_dwell_rev1(75, 75.01, 1.45, 1.45, jitter_deg_s=[0 0]);
+verifyEqual(tc, D3.episode0_s, 290, "RelTol", 1e-9);
+verifyEqual(tc, D3.p_exceed.p_episode_longer', double([60 600 3600 86400 2592000] < 290));
+% A cap at the cut length removes longer episodes
+D4 = alignment_dwell_rev1(75, 12.524, 1.45, 0.925, jitter_deg_s=[0.5 0], max_episode_s=28.745);
+verifyTrue(tc, all(D4.p_exceed.p_episode_longer(D4.p_exceed.t_s >= 60) == 0));
+verifyError(tc, @() alignment_dwell_rev1(75, 75, 1.45, 1.45, jitter_deg_s=[80 0]), "radar_coupling:badJitter");
+end
+
+function testAlignmentDwellBruteForce(tc)
+% Count joint periods with both beams inside their 3 dB beamwidths at the
+% same instant; compare with T_ep / T_j.
+bw = 1.45;
+cases = {75, 75.01, -2, 400; 75, 37.495, 1.5, 600};
+for k = 1:2
+    [r1, r2, ph0, T] = cases{k, :};
+    D = alignment_dwell_rev1(r1, r2, bw, bw, jitter_deg_s=[0 0]);
+    t = (0:0.0005:T)';
+    a1 = wrapTo180(r1*t);
+    a2 = wrapTo180(ph0 + r2*t);                 % radar 2 points at radar 1 when a2 = 0 here
+    hit = abs(a1) <= bw/2 & abs(a2) <= bw/2;
+    n_ev = numel(unique(floor(t(hit)/D.joint_period_s)));
+    verifyEqual(tc, n_ev, D.events0, "AbsTol", 2, sprintf("case %d", k));
+end
+end
+
+function testSensitivityFunction(tc)
+b = struct("seed", 3, "vcp", 212, "sails", 3, "n_samples", 2e4, "duration_s", 120, "n_trials", 1);
+c = struct("group", {"ASR-11 tilt", "ASR-11 remote sidelobe"}, "label", {"+2.5 deg", "+6.5 dBi"}, ...
+    "opts", {struct("asr_tilt_deg", 2.5), struct("asr_remote_sl_dBi", 6.5)});
+T = mag_sensitivity_rev1(b, c);
+verifyEqual(tc, height(T), 3);
+verifyEqual(tc, T.label(1), "Baseline");
+verifyEqual(tc, T{1, ["d99_dB", "d99_9_dB", "d99_99_dB", "d99_999_dB"]}, [0 0 0 0]);
+verifyEqual(tc, T.mbmb_peak_dBi, 79.5 + [0; 0; 0], "AbsTol", 1e-9);
+% Same seed, same pointing samples: a higher ASR-11 floor can only raise each MAG.
+verifyGreaterThan(tc, T.p99_9_dBi(3), T.p99_9_dBi(1));
+verifyError(tc, @() mag_sensitivity_rev1(b, struct("label", "x")), "radar_coupling:badCase");
 end
 
 % =========================================================================
