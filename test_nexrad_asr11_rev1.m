@@ -345,6 +345,22 @@ verifyTrue(tc, issorted(flipud(env.exceed.envelope_exceed_pct)));
 verifyError(tc, @() mag_mode_envelope_rev1({a}, ["A", "B"]), "radar_coupling:envelopeInput");
 end
 
+function testCdfArray(tc)
+% CDF as [percent, MAG dBi], 0 to 100, consistent with the samples.
+out = quick_run(struct("cdf_pct", 0:5:100));
+A = out.cdf.cdf_array21;
+verifySize(tc, A, [21 2]);
+verifyEqual(tc, A(:, 1), (0:5:100)');
+verifyEqual(tc, A(1, 2), min(out.cdf.g21_dBi));
+verifyEqual(tc, A(end, 2), max(out.cdf.g21_dBi));
+verifyTrue(tc, issorted(A(:, 2)));
+verifyEqual(tc, A(A(:, 1) == 50, 2), prctile(out.cdf.g21_dBi, 50));
+d = quick_run(struct()).cdf.cdf_array21;          % default grid includes the tail
+verifyTrue(tc, all(ismember([0 50 99 99.9 99.99 99.999 100], d(:, 1))));
+verifyError(tc, @() quick_run(struct("cdf_pct", [0 50 40])), "radar_coupling:badCdfPct");
+verifyError(tc, @() quick_run(struct("cdf_pct", [0 101])), "radar_coupling:badCdfPct");
+end
+
 function testShortRunHasNoCompleteCuts(tc)
 % 10 s is shorter than any VCP 212 cut pair: no complete cut, empty
 % per-elevation table, no error.

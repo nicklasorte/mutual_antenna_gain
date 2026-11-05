@@ -44,11 +44,14 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       ASR-11 beam transit time, 1.45/75 = 0.019 s)
 %     .pct              percentiles reported ([50 90 99 99.9 99.99 99.999])
 %     .parallel_flag    0 (default) | 1, passed to the CDF run
+%     .cdf_pct          percent grid of out.cdf.cdf_array12/21, 0 to 100
+%                       (default 0:1:100 plus 99.5 to 99.999)
 %     .plot_flag        true: plot the exceedance curve with the reference
 %                       levels (false)
 %
 %   out struct:
-%     .cdf              radar_mutual_gain_cdf_rev1 output (random mode)
+%     .cdf              radar_mutual_gain_cdf_rev1 output (random mode),
+%                       including cdf_array21: [percent 0-100, MAG dBi]
 %     .ref_levels       table of main-beam and sidelobe combinations on the
 %                       link path: combination, mag_dBi, nexrad_gain_dBi,
 %                       asr11_gain_dBi, time_exceeded_pct (time-weighted CDF),
@@ -109,7 +112,7 @@ A = assumptions();
 %      (drive tolerance), so the commensurate-rate warning is expected.
 o = struct("seed", opts.seed, "mode", "random", "n_samples", opts.n_samples, ...
     "el12_deg", opts.el_path_deg, "el21_deg", opts.el_path_deg, ...
-    "pct", opts.pct, "parallel_flag", opts.parallel_flag);
+    "pct", opts.pct, "parallel_flag", opts.parallel_flag, "cdf_pct", opts.cdf_pct);
 w = warning("off", "radar_coupling:commensurateRates");
 cleanup = onCleanup(@() warning(w));
 cdf = radar_mutual_gain_cdf_rev1(sys_n, sys_a, o);
@@ -550,7 +553,7 @@ d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_d
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
     "el_path_deg", 0, "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
-    "plot_flag", false);
+    "plot_flag", false, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i}) || (isempty(opts.(f{i})) && f{i} ~= "cd_rate_deg_s")

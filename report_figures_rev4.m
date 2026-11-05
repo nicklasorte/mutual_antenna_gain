@@ -9,7 +9,8 @@
 %     fig6_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
 %     vcp_sweep_rev4.csv          sweep table (all modes)
 %     ref_levels_rev4.csv, by_elevation_rev4.csv, asr_rev_pct_rev4.csv,
-%     sensitivity_rev4.csv, mode_envelope_rev4.csv
+%     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
+%     cdf_array_rev4.csv (CDF arrays: percent 0-100 and MAG dBi)
 %   Style: NTIA palette (mid gray context, light blue highlight, purple
 %   second highlight, dark blue text), Times New Roman, 6.5 in wide.
 %   Titles, captions and sources are in the report text, not the images.
@@ -93,17 +94,20 @@ style(ax, c, "Time in volume (s)", "Elevation (deg)", "");
 ylim(ax, [0 20]); xlim(ax, [0 max(sw.volume_s, s215.volume_s)]);
 save_fig(f, out_dir, "fig2_vcp_schedule");
 
-% ---- Figure 3: 99.9% MAG versus time at 0.5 deg ----------------------------
+% ---- Figure 3: MAG versus time at 0.5 deg ---------------------------------
 f = new_fig(6.5, 3.0);
 ax = axes(f);
-scatter(ax, V.t_low_pct, V.p99_9, 28, c.gray, "filled"); hold(ax, "on");
-scatter(ax, V.t_low_pct(i999), V.p99_9(i999), 60, c.blue, "filled");
-put_label(ax, V.t_low_pct(i999) - 1, V.p99_9(i999) + 0.4, string(worst) + " (worst)", c.blue, true, "right");
-[~, i_lo] = min(V.p99_9);
-put_label(ax, V.t_low_pct(i_lo) + 0.6, V.p99_9(i_lo) + 0.2, string(V.case(i_lo)), c.dark, false);
-yline(ax, T.p99_9(i_p), "--", "Color", c.purple, "LineWidth", 1.2);
-put_label(ax, 13.5, T.p99_9(i_p) + 0.35, sprintf("Paper baseline, %.1f dBi", T.p99_9(i_p)), c.purple, true);
-style(ax, c, "NEXRAD time at 0.5 deg (% of volume)", "99.9% mutual gain (dBi)", "");
+[tl, o] = sort(V.t_low_pct);
+plot(ax, tl, V.p99_99(o), "-", "Color", c.gray, "LineWidth", 1.2); hold(ax, "on");
+plot(ax, tl, V.p99(o), "--", "Color", c.gray, "LineWidth", 1.2);
+plot(ax, tl, V.p99_9(o), "-", "Color", c.blue, "LineWidth", 2.2);
+yline(ax, T.p99_9(i_p), ":", "Color", c.purple, "LineWidth", 1.2);
+put_label(ax, tl(end), V.p99_99(o(end)) + 1.8, "99.99%", c.gray, false, "right");
+put_label(ax, tl(end), V.p99_9(o(end)) - 2.2, "99.9%", c.blue, true, "right");
+put_label(ax, tl(end), V.p99(o(end)) + 1.8, "99%", c.gray, false, "right");
+put_label(ax, tl(1), T.p99_9(i_p) + 1.6, sprintf("Paper baseline 99.9%%, %.1f dBi", T.p99_9(i_p)), c.purple, true);
+style(ax, c, "NEXRAD time at 0.5 deg (% of volume), 21 VCP modes", "Mutual antenna gain (dBi)", "");
+ylim(ax, [10 50]); xlim(ax, [tl(1) - 1, tl(end) + 1]);
 save_fig(f, out_dir, "fig3_low_tilt_driver");
 
 % ---- Figure 4: exceedance with reference levels ----------------------------
@@ -135,45 +139,50 @@ save_fig(f, out_dir, "fig4_exceedance");
 f = new_fig(6.5, 3.0);
 ax = axes(f);
 Rv = w.scan_max.asr_rev(w.scan_max.asr_rev.trial == 1 & w.scan_max.asr_rev.complete, :);
-hi = Rv.max_g21_dBi >= R.mag_dBi(3) - 0.2;
-scatter(ax, Rv.t_start_s(~hi), Rv.max_g21_dBi(~hi), 8, c.gray, "filled"); hold(ax, "on");
-scatter(ax, Rv.t_start_s(hi), Rv.max_g21_dBi(hi), 22, c.blue, "filled");
+plot(ax, Rv.t_start_s, Rv.max_g21_dBi, "-", "Color", c.blue, "LineWidth", 0.9); hold(ax, "on");
 yline(ax, R.mag_dBi(5), ":", "Color", c.dark);
+yline(ax, R.mag_dBi(3), ":", "Color", c.dark);
 yline(ax, R.mag_dBi(1), ":", "Color", c.dark);
-put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe, %.1f dBi", R.mag_dBi(5)), c.dark, false);
+put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe, %.1f dBi (every revolution)", R.mag_dBi(5)), c.dark, false);
+put_label(ax, 20, R.mag_dBi(3) + 2.5, sprintf("NEXRAD main beam + ASR-11 back lobe, %.1f dBi (%.1f%% of revolutions)", ...
+    R.mag_dBi(3), R.asr_rev_reached_pct(3)), c.dark, false);
 put_label(ax, 20, R.mag_dBi(1) + 3, sprintf("Main beam to main beam, %.1f dBi", R.mag_dBi(1)), c.dark, false);
-put_label(ax, 1900, 62, sprintf("%.1f%% of revolutions reach %.1f dBi or more", ...
-    R.asr_rev_reached_pct(3), R.mag_dBi(3)), c.blue, true);
-style(ax, c, "Time (s), trial 1", "Maximum mutual gain per revolution (dBi)", "");
+style(ax, c, "Time (s), trial 1", "Maximum MAG per revolution (dBi)", "");
 ylim(ax, [15 85]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
 % ---- Figure 6: main beam to main beam versus the statistical MAG -------------
+%      MAG against percent of time exceeded, from the CDF arrays
 f = new_fig(6.5, 3.2);
 ax = axes(f);
 Sw = res{i_w}.sensitivity; S215 = res{i_215}.sensitivity; Sp = res{i_p}.sensitivity;
-keep = [1 2 7 6 5 4];                          % peak MB-MB, path MB-MB, 99.999 ... 99%
-yl = ["Main beam to main beam (peak gains)", "Main beam to main beam (on path)", ...
-    "99.999% MAG", "99.99% MAG", "99.9% MAG", "99% MAG"];
-y = numel(keep):-1:1;
-plot(ax, Sp.mag_dBi(keep), y + 0.18, "d", "MarkerFaceColor", c.purple, "MarkerEdgeColor", "none", "MarkerSize", 6);
-hold(ax, "on");
-plot(ax, S215.mag_dBi(keep), y - 0.18, "o", "MarkerFaceColor", c.gray, "MarkerEdgeColor", "none", "MarkerSize", 6);
-plot(ax, Sw.mag_dBi(keep), y, "o", "MarkerFaceColor", c.blue, "MarkerEdgeColor", "none", "MarkerSize", 8);
-xline(ax, Sw.mag_dBi(1), "-", "Color", c.dark, "LineWidth", 0.8);
-for k = 3:numel(keep)
-    text(ax, Sw.mag_dBi(keep(k)) + 1.5, y(k), sprintf("%.0f dB below", -Sw.delta_vs_peak_mbmb_dB(keep(k))), ...
-        "Color", c.blue, "FontWeight", "bold", "FontName", "Times New Roman", "FontSize", 8);
+p_fine = 100 - logspace(0, -3, 200)';         % 99% to 99.999%, finer than opts.cdf_pct
+cases = cellfun(@(r) [p_fine, prctile(r.cdf.g21_dBi, p_fine)], {res{i_p}, res{i_215}, res{i_w}}, ...
+    "UniformOutput", false);
+sty = {{"--", c.purple, 1.4}, {"-", c.gray, 1.4}, {"-", c.blue, 2.2}};
+for k = 1:3
+    A = cases{k};
+    A = A(A(:, 1) >= 99 & A(:, 1) < 100, :);
+    semilogx(ax, 100 - A(:, 1), A(:, 2), sty{k}{1}, "Color", sty{k}{2}, "LineWidth", sty{k}{3});
+    hold(ax, "on");
 end
-put_label(ax, 2, 6.75, string(worst), c.blue, true);
-put_label(ax, 2, 6.35, "VCP 215", c.gray, false);
-put_label(ax, 2, 5.95, "Paper baseline (F.1245, 3 rpm)", c.purple, true);
-ax.YTick = 1:numel(keep);
-ax.YTickLabel = fliplr(yl);
-style(ax, c, "Mutual antenna gain (dBi)", "", "");
-ax.YGrid = "off"; ax.XGrid = "on";
-xlim(ax, [0 85]); ylim(ax, [0.4 numel(keep) + 0.9]);
+ax.XDir = "reverse";
+yline(ax, Sw.mag_dBi(1), "-", "Color", c.dark, "LineWidth", 1.0);
+yline(ax, Sw.mag_dBi(2), ":", "Color", c.dark, "LineWidth", 1.0);
+put_label(ax, 1, Sw.mag_dBi(1) + 2.5, sprintf("Main beam to main beam, peak gains, %.1f dBi", Sw.mag_dBi(1)), c.dark, false);
+put_label(ax, 1, Sw.mag_dBi(2) - 3, sprintf("Main beam to main beam on the path, %.1f dBi", Sw.mag_dBi(2)), c.dark, false);
+g01 = Sw.delta_vs_peak_mbmb_dB(Sw.mag_choice == "99.9% time-weighted MAG");
+put_label(ax, 0.0011, 71, string(worst), c.blue, true, "right");
+put_label(ax, 0.1, 31, sprintf("Worst mode at 0.1%%: %.0f dB below peak main beam to main beam", -g01), c.blue, false);
+put_label(ax, 0.01, 65, "Paper baseline", c.purple, true, "right");
+put_label(ax, 0.01, 37, "VCP 215", c.gray, false, "right");
+style(ax, c, "Time exceeded (%, log scale)", "Mutual antenna gain (dBi)", "");
+xlim(ax, [1e-3 1]); ylim(ax, [10 85]);
 save_fig(f, out_dir, "fig6_mbmb_vs_statistical");
+A3 = {res{i_p}.cdf.cdf_array21, res{i_215}.cdf.cdf_array21, res{i_w}.cdf.cdf_array21};   % opts.cdf_pct grid
+cdf_tab = array2table([A3{1}(:, 1), A3{1}(:, 2), A3{2}(:, 2), A3{3}(:, 2)], ...
+    "VariableNames", ["pct", "paper_baseline_dBi", "vcp215_dBi", "worst_mode_dBi"]);
+writetable(cdf_tab, fullfile(out_dir, "cdf_array_rev4.csv"));
 writetable([table(repmat(T.case(i_p), height(Sp), 1), 'VariableNames', "case"), Sp; ...
     table(repmat(T.case(i_215), height(S215), 1), 'VariableNames', "case"), S215; ...
     table(repmat(worst, height(Sw), 1), 'VariableNames', "case"), Sw], ...

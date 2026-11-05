@@ -88,6 +88,8 @@ function out = radar_mutual_gain_cdf_rev1(sys1, sys2, opts)
 %     .parallel_flag  0 (default) or 1 (parfor over chunks or trials)
 %     .chunk_size     random mode samples per chunk (default 2.5e5)
 %     .pct            percentiles to report (default [50 90 99 99.9 99.99 99.999])
+%     .cdf_pct        percent grid of the CDF arrays, 0 to 100 (default 0:1:100
+%                     plus 99.5, 99.9, 99.95, 99.99, 99.995 and 99.999)
 %     .event_thresh_dBi  coupling thresholds for event statistics
 %                     (time_series; default [20 30 40])
 %     .scan_sync      "unsynchronized" (default) | "synchronized". The
@@ -104,6 +106,10 @@ function out = radar_mutual_gain_cdf_rev1(sys1, sys2, opts)
 %   out struct:
 %     .g12_dBi, .g21_dBi  coupling samples, column vectors
 %     .cdf12, .cdf21      tables: gain_dBi, cdf, exceed_pct (0.1 dB grid)
+%     .cdf_array12, .cdf_array21  N-by-2 double: column 1 is the percent
+%                         of time (0 to 100, opts.cdf_pct), column 2 the MAG
+%                         (dBi) not exceeded for that percent of time
+%                         (prctile; 0 gives the minimum, 100 the maximum)
 %     .pct12, .pct21      tables: pct, gain_dBi, n_tail (samples above the
 %                         percentile; < 10 means the tail is poorly sampled)
 %     .geom               az/el each way, beat period
@@ -159,6 +165,8 @@ out.cdf12 = cdf_table(g12);
 out.cdf21 = cdf_table(g21);
 out.pct12 = pct_table(g12, opts.pct);
 out.pct21 = pct_table(g21, opts.pct);
+out.cdf_array12 = cdf_array(g12, opts.cdf_pct);
+out.cdf_array21 = cdf_array(g21, opts.cdf_pct);
 out.geom = geom;
 out.events12 = events12;
 out.ts = ts;
@@ -439,6 +447,12 @@ T = table(edges(2:end)', F, 100*(1 - F), ...
 end
 
 % -------------------------------------------------------------------------
+function A = cdf_array(g, pct)
+% CDF as a plain numeric array: [percent, MAG dBi], percent 0 to 100.
+A = [pct(:), prctile(g, pct(:))];
+end
+
+% -------------------------------------------------------------------------
 function T = pct_table(g, pct)
 q = prctile(g, pct(:));
 n_tail = numel(g)*(1 - pct(:)/100);
@@ -546,7 +560,8 @@ end
 d = struct("mode", "random", "n_samples", 5e6, "duration_s", 3600, ...
     "dt_s", NaN, "n_trials", 4, "el12_deg", 0, "el21_deg", 0, "parallel_flag", 0, ...
     "chunk_size", 2.5e5, "pct", [50 90 99 99.9 99.99 99.999], ...
-    "event_thresh_dBi", [20 30 40], "scan_sync", "unsynchronized", "sync_offset_deg", 0);
+    "event_thresh_dBi", [20 30 40], "scan_sync", "unsynchronized", "sync_offset_deg", 0, ...
+    "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i}) || isempty(opts.(f{i}))
@@ -563,6 +578,10 @@ end
 opts.scan_sync = string(opts.scan_sync);
 if ~ismember(opts.scan_sync, ["unsynchronized", "synchronized"])
     error("radar_coupling:badScanSync", "opts.scan_sync must be ""unsynchronized"" or ""synchronized"".");
+end
+if ~isnumeric(opts.cdf_pct) || isempty(opts.cdf_pct) || any(opts.cdf_pct < 0 | opts.cdf_pct > 100) ...
+        || any(diff(opts.cdf_pct(:)) <= 0)
+    error("radar_coupling:badCdfPct", "opts.cdf_pct must increase strictly within 0 to 100.");
 end
 if ~isscalar(opts.sync_offset_deg) || ~isfinite(opts.sync_offset_deg)
     error("radar_coupling:badSyncOffset", "opts.sync_offset_deg must be a finite scalar.");
