@@ -20,12 +20,16 @@ thr = [40 50 60];                                  % per-revolution thresholds (
 c = {};
 c{end+1} = struct("label", "Paper: F.1245, 3 rpm, horizon", "nexrad_scan", "constant", ...
     "nexrad_pattern", "f1245", "asr_pattern", "f1245");
-vcps = struct("vcp", {35, 215, 212, 12, 112}, "sails", {1, 1, 3, 3, 1}, ...
-    "mrle", {false, true, true, true, false}, "avset", {false, true, true, true, true}, ...
-    "cd", {true, true, true, true, false});
-for v = vcps
+% Every WSR-88D VCP in operational Level II data, 2024-2026. Option limits
+% come from the VCP table itself (scan.limits), so they are defined once.
+vcp_list = [35 31 32 34 215 212 12 112];
+for vcp = vcp_list
+    lim = nexrad_vcp_rev1(vcp).limits;
+    v = struct("vcp", vcp, "sails", lim.sails, "mrle", lim.mrle, "avset", lim.avset, "cd", lim.cd_rate);
     c{end+1} = struct("label", sprintf("VCP %d", v.vcp), "vcp", v.vcp); %#ok<SAGROW>
-    c{end+1} = struct("label", sprintf("VCP %d SAILSx%d", v.vcp, v.sails), "vcp", v.vcp, "sails", v.sails); %#ok<SAGROW>
+    if v.sails > 0
+        c{end+1} = struct("label", sprintf("VCP %d SAILSx%d", v.vcp, v.sails), "vcp", v.vcp, "sails", v.sails); %#ok<SAGROW>
+    end
     if v.mrle
         c{end+1} = struct("label", sprintf("VCP %d MRLEx4", v.vcp), "vcp", v.vcp, "mrle", 4); %#ok<SAGROW>
     end
