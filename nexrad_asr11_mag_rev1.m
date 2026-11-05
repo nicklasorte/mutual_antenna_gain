@@ -46,6 +46,8 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .parallel_flag    0 (default) | 1, passed to the CDF run
 %     .cdf_pct          percent grid of out.cdf.cdf_array12/21, 0 to 100
 %                       (default 0:1:100 plus 99.5 to 99.999)
+%     .keep_ts1         true: return trial 1 of the time series in
+%                       out.scan_max.ts1 (false; about 70 MB per hour)
 %     .plot_flag        true: plot the exceedance curve with the reference
 %                       levels (false)
 %
@@ -79,6 +81,14 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .scan_max.nexrad_volume table, one row per NEXRAD volume: trial,
 %                            volume, t_start_s, max_g12_dBi, max_g21_dBi,
 %                            el_at_max_deg, complete
+%                            The asr_rev table also gives, at each
+%                            revolution maximum, each radar's gain and
+%                            beam azimuth off the path (explains each peak).
+%     .scan_max.plateaus     hand check of the per-revolution plateaus:
+%                            NEXRAD main beam on the path at each tilt +
+%                            ASR-11 floor, with predicted and simulated
+%                            share of revolutions reaching each level
+%     .scan_max.ts1          trial 1 samples when opts.keep_ts1 is true
 %     .scan_max.by_elevation  per NEXRAD elevation: number of complete
 %                            cuts, median and maximum of the cut maxima
 %     .scan_max.asr_rev_pct   percentiles of the per-revolution maxima
@@ -406,7 +416,11 @@ t_rev = 360/rate_a;
 t = (0:opts.dt_s:opts.duration_s)';
 n_t = numel(t);
 [rev_tab, cut_tab, vol_tab] = deal(cell(opts.n_trials, 1));
-[g12_all, g21_all] = deal(cell(opts.n_trials, 1));
+% Time-series percentiles from a 0.01 dB histogram, so long runs (many
+% trials) need not keep every sample in memory.
+h_edges = (-80:0.01:100)';
+h_counts = zeros(numel(h_edges) - 1, 1);
+S.ts1 = [];
 for j = 1:opts.n_trials
     rs = RandStream("mrg32k3a", "Seed", opts.seed);
     rs.Substream = 1000 + j;                    % apart from the CDF substreams
@@ -446,9 +460,16 @@ for j = 1:opts.n_trials
     % ASR-11 at 0 deg from it; the NEXRAD at 180 deg from the ASR-11.
     e = opts.el_path_deg;
     g12 = antenna_gain_rev1(pn.tx, 0, e, st_n) + antenna_gain_rev1(pa.rx, 180, e, st_a);
-    g21 = antenna_gain_rev1(pa.tx, 180, e, st_a) + antenna_gain_rev1(pn.rx, 0, e, st_n);
-    g12_all{j} = g12;
-    g21_all{j} = g21;
+    gA = antenna_gain_rev1(pa.tx, 180, e, st_a);     % ASR-11 transmit gain toward the NEXRAD
+    gN = antenna_gain_rev1(pn.rx, 0, e, st_n);       % NEXRAD receive gain toward the ASR-11
+    g21 = gA + gN;
+    h_counts = h_counts + histcounts(g21, h_edges)';
+    offA = wrapTo180(180 - st_a.mech_az);            % ASR-11 beam azimuth off the path
+    offN = wrapTo180(0 - st_n.mech_az);              % NEXRAD beam azimuth off the path
+    if j == 1 && opts.keep_ts1
+        S.ts1 = struct("t_s", t, "g21_dBi", g21, "asr11_gain_dBi", gA, "nexrad_gain_dBi", gN, ...
+            "asr11_az_off_deg", offA, "nexrad_az_off_deg", offN, "nexrad_el_deg", el_n(cut));
+    end
 
     % ---- per ASR-11 revolution (rev, cut key and vol are nondecreasing in
     %      t, so each scan is one contiguous run of samples)
@@ -457,8 +478,10 @@ for j = 1:opts.n_trials
     m12 = run_max(g12, first, last);
     n_r = numel(first);
     rev_tab{j} = table(j + zeros(n_r, 1), (1:n_r)', t(first), r_rev(rev(first)), m12, m21, ...
-        el_n(cut(k21)), edge_flag(n_r), 'VariableNames', ["trial", "rev", "t_start_s", ...
-        "rate_deg_s", "max_g12_dBi", "max_g21_dBi", "nexrad_el_at_max_deg", "complete"]);
+        el_n(cut(k21)), gN(k21), gA(k21), offN(k21), offA(k21), t(k21), edge_flag(n_r), ...
+        'VariableNames', ["trial", "rev", "t_start_s", "rate_deg_s", "max_g12_dBi", ...
+        "max_g21_dBi", "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "asr11_gain_at_max_dBi", ...
+        "nexrad_az_off_at_max_deg", "asr11_az_off_at_max_deg", "t_at_max_s", "complete"]);
 
     % ---- per NEXRAD cut
     [first, last] = runs((vol - vol(1))*numel(dur_n) + cut);
@@ -500,9 +523,56 @@ R = S.asr_rev(S.asr_rev.complete, :);
 S.asr_rev_pct = table(opts.pct(:), prctile(R.max_g21_dBi, opts.pct(:)), ...
     'VariableNames', ["pct", "max_g21_dBi"]);
 
-g21 = vertcat(g21_all{:});
-ts_pct = table(opts.pct(:), prctile(g21, opts.pct(:)), ...
-    'VariableNames', ["pct", "gain_dBi"]);
+F = cumsum(h_counts)/sum(h_counts);
+q = zeros(numel(opts.pct), 1);
+for i = 1:numel(opts.pct)
+    q(i) = h_edges(find(F >= opts.pct(i)/100, 1) + 1);   % upper edge: within 0.01 dB
+end
+ts_pct = table(opts.pct(:), q, 'VariableNames', ["pct", "gain_dBi"]);
+S.plateaus = plateau_check(pn.rx, pa.tx, el_n, t_vol, t_rev, S.asr_rev, opts);
+end
+
+% -------------------------------------------------------------------------
+function P = plateau_check(pn, pa, el_n, t_vol, t_rev, Rv, opts)
+% Hand calculation of the per-revolution plateaus. Each NEXRAD cut makes
+% one revolution, so its main beam crosses the ASR-11 bearing once per cut.
+% During an ASR-11 revolution that contains that crossing, the MAG reaches
+% at least G_NEXRAD(on path, cut tilt) + G_ASR-11(floor). The share of
+% ASR-11 revolutions that contain a crossing from cuts at tilt e or lower
+% is about (number of those cuts per volume) x T_rev / T_volume. The
+% simulated share counts revolutions within 0.2 dB of each level. Below
+% about 30 dBi, the ASR-11 main beam on NEXRAD sidelobes also reaches the
+% level, so the hand count is a lower bound there.
+z = zeros(1, 1);
+g_floor = antenna_gain_rev1(pa, 180, opts.el_path_deg, ...
+    struct("mech_az", z, "tilt", z, "steer_az", z, "steer_el", z));   % ASR-11 beam pointing away
+el = unique(el_n);
+n_el = numel(el);
+[g_n, n_cut, lev, pred, sim] = deal(zeros(n_el, 1));
+Rc = Rv(Rv.complete, :);
+for i = 1:n_el
+    st = struct("mech_az", 0, "tilt", el(i), "steer_az", 0, "steer_el", 0);
+    g_n(i) = antenna_gain_rev1(pn, 0, opts.el_path_deg, st);
+    lev(i) = g_n(i) + g_floor;
+    n_cut(i) = sum(el_n == el(i));
+end
+for i = 1:n_el
+    k = lev >= lev(i) - 1e-9;                 % cuts whose crossing reaches this level
+    pred(i) = 100*min(1, sum(n_cut(k))*t_rev/t_vol);
+    sim(i) = 100*mean(Rc.max_g21_dBi >= lev(i) - 0.2);
+end
+% Keep only levels above ASR-11 main beam + NEXRAD back lobe, which every
+% revolution reaches; at or below it the hand count does not apply.
+z1 = struct("mech_az", 180, "tilt", el_n(1), "steer_az", 0, "steer_el", 0);
+g_base = antenna_gain_rev1(pa, 180, opts.el_path_deg, struct("mech_az", 180, "tilt", 0, ...
+    "steer_az", 0, "steer_el", 0)) + antenna_gain_rev1(pn, 0, opts.el_path_deg, z1);
+keep = lev > g_base + 1e-9;
+[el, n_cut, g_n, lev, pred, sim] = deal(el(keep), n_cut(keep), g_n(keep), lev(keep), pred(keep), sim(keep));
+n_el = numel(el);
+P = table(el, n_cut, g_n, g_floor + zeros(n_el, 1), lev, pred, sim, 'VariableNames', ...
+    ["el_deg", "cuts_per_volume", "nexrad_gain_on_path_dBi", "asr11_floor_dBi", "level_dBi", ...
+    "predicted_rev_pct", "simulated_rev_pct"]);
+P.Properties.Description = sprintf("T_rev = %.3f s, T_volume = %.2f s", t_rev, t_vol);
 end
 
 % -------------------------------------------------------------------------
@@ -553,7 +623,7 @@ d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_d
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
     "el_path_deg", 0, "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
-    "plot_flag", false, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
+    "plot_flag", false, "keep_ts1", false, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i}) || (isempty(opts.(f{i})) && f{i} ~= "cd_rate_deg_s")

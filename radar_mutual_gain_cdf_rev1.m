@@ -110,7 +110,9 @@ function out = radar_mutual_gain_cdf_rev1(sys1, sys2, opts)
 %                         of time (0 to 100, opts.cdf_pct), column 2 the MAG
 %                         (dBi) not exceeded for that percent of time
 %                         (prctile; 0 gives the minimum, 100 the maximum)
-%     .pct12, .pct21      tables: pct, gain_dBi, n_tail (samples above the
+%     .pct12, .pct21      tables: pct, gain_dBi, ci95_lo_dBi, ci95_hi_dBi
+%                         (95% confidence interval from order statistics),
+%                         n_tail (samples above the
 %                         percentile; < 10 means the tail is poorly sampled)
 %     .geom               az/el each way, beat period
 %                         360/|rate1-rate2|, joint_period_s (repeat period
@@ -454,9 +456,19 @@ end
 
 % -------------------------------------------------------------------------
 function T = pct_table(g, pct)
+% Percentiles with distribution-free 95% confidence intervals from order
+% statistics: the p-quantile lies between order statistics n*p -/+ 1.96 *
+% sqrt(n*p*(1-p)) (normal approximation to the binomial count).
 q = prctile(g, pct(:));
-n_tail = numel(g)*(1 - pct(:)/100);
-T = table(pct(:), q(:), n_tail, 'VariableNames', ["pct", "gain_dBi", "n_tail"]);
+n = numel(g);
+n_tail = n*(1 - pct(:)/100);
+gs = sort(g(:));
+p = pct(:)/100;
+half = 1.96*sqrt(n*p.*(1 - p));
+lo = gs(min(max(floor(n*p - half), 1), n));
+hi = gs(min(max(ceil(n*p + half), 1), n));
+T = table(pct(:), q(:), lo(:), hi(:), n_tail, 'VariableNames', ...
+    ["pct", "gain_dBi", "ci95_lo_dBi", "ci95_hi_dBi", "n_tail"]);
 end
 
 % =========================================================================

@@ -361,6 +361,51 @@ verifyError(tc, @() quick_run(struct("cdf_pct", [0 50 40])), "radar_coupling:bad
 verifyError(tc, @() quick_run(struct("cdf_pct", [0 101])), "radar_coupling:badCdfPct");
 end
 
+function testPeakDecomposition(tc)
+% Each revolution maximum is the NEXRAD gain plus the ASR-11 gain at the
+% sample where it occurs, and the offsets are on -180..180 deg.
+out = quick_run(struct("duration_s", 300, "keep_ts1", true));
+R = out.scan_max.asr_rev;
+verifyEqual(tc, R.max_g21_dBi, R.nexrad_gain_at_max_dBi + R.asr11_gain_at_max_dBi, "AbsTol", 1e-9);
+verifyLessThanOrEqual(tc, abs([R.nexrad_az_off_at_max_deg; R.asr11_az_off_at_max_deg]), 180);
+verifyLessThanOrEqual(tc, R.nexrad_gain_at_max_dBi, 45.5 + 1e-9);
+verifyLessThanOrEqual(tc, R.asr11_gain_at_max_dBi, 34 + 1e-9);
+T1 = out.scan_max.ts1;
+verifyEqual(tc, T1.g21_dBi, T1.asr11_gain_dBi + T1.nexrad_gain_dBi, "AbsTol", 1e-9);
+k = find(T1.t_s == R.t_at_max_s(1), 1);
+verifyEqual(tc, T1.g21_dBi(k), R.max_g21_dBi(1), "AbsTol", 1e-12);
+verifyEmpty(tc, quick_run(struct()).scan_max.ts1);
+end
+
+function testPlateauCheckMatchesSimulation(tc)
+% VCP 212 SAILSx3: 8 cuts at 0.5 deg per 416.6 s volume, so about
+% 8 x 4.8 / 416.6 = 9.2% of ASR-11 revolutions reach 45.49 dBi.
+out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 3600, "asr_rate_jitter_deg_s", 0));
+P = out.scan_max.plateaus;
+i05 = P.el_deg == 0.5;
+verifyEqual(tc, P.cuts_per_volume(i05), 8);
+verifyEqual(tc, P.level_dBi(i05), 45.5 - 12*(0.5/0.925)^2 + 3.5, "AbsTol", 1e-3);
+verifyEqual(tc, P.predicted_rev_pct(i05), 100*8*4.8/out.scan_max.t_volume_s, "AbsTol", 1e-9);
+verifyEqual(tc, P.simulated_rev_pct(i05), P.predicted_rev_pct(i05), "AbsTol", 3.5);
+i09 = P.el_deg == 0.9;
+verifyEqual(tc, P.level_dBi(i09), 45.5 - 12*(0.9/0.925)^2 + 3.5, "AbsTol", 1e-3);
+verifyEqual(tc, P.simulated_rev_pct(i09), P.predicted_rev_pct(i09), "AbsTol", 4);
+end
+
+function testPercentileConfidenceInterval(tc)
+% Order-statistic 95% interval brackets the estimate; for a normal sample
+% its width at the median is close to 2 x 1.96 x sqrt(pi/2)/sqrt(n).
+out = quick_run(struct("n_samples", 2e5));
+P = out.cdf.pct21;
+verifyTrue(tc, all(P.ci95_lo_dBi <= P.gain_dBi & P.gain_dBi <= P.ci95_hi_dBi));
+rs = RandStream("mrg32k3a", "Seed", 9);
+x = randn(rs, 1e6, 1);
+gs = sort(x);
+n = numel(x); half = 1.96*sqrt(n*0.25);
+w = gs(ceil(n/2 + half)) - gs(floor(n/2 - half));
+verifyEqual(tc, w, 2*1.96*sqrt(pi/2)/sqrt(n), "RelTol", 0.15);
+end
+
 function testShortRunHasNoCompleteCuts(tc)
 % 10 s is shorter than any VCP 212 cut pair: no complete cut, empty
 % per-elevation table, no error.

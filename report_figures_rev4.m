@@ -6,7 +6,10 @@
 %     fig3_low_tilt_driver.png    99.9% MAG versus time at 0.5 deg
 %     fig4_exceedance.png         MAG exceedance with reference levels
 %     fig5_max_per_rev.png        maximum MAG per ASR-11 revolution
-%     fig6_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
+%     fig7_mbmb_vs_statistical.png  main beam to main beam versus statistical MAG
+%     fig6_peak_anatomy.png       gains around the two largest peaks (72 h run, trial 1)
+%     plateaus_rev4.csv, peaks_above_plateau_72h_rev4.csv, rev_exceedance_72h_rev4.csv,
+%     asr_rev_pct_72h_rev4.csv, convergence_rev4.csv
 %     vcp_sweep_rev4.csv          sweep table (all modes)
 %     ref_levels_rev4.csv, by_elevation_rev4.csv, asr_rev_pct_rev4.csv,
 %     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
@@ -27,6 +30,38 @@ writetable(w.ref_levels, fullfile(out_dir, "ref_levels_rev4.csv"));
 writetable(w.scan_max.by_elevation, fullfile(out_dir, "by_elevation_rev4.csv"));
 writetable(w.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_rev4.csv"));
 writetable(w.sensitivity, fullfile(out_dir, "sensitivity_rev4.csv"));
+
+% ---- Worst mode, long time series: 72 trials of 1 h (72 h, about 54,000
+%      ASR-11 revolutions). Same seed as the example, so trial 1 and the
+%      random-mode CDF match the sweep.
+o_long = struct("seed", base.seed, "vcp", 212, "sails", 3, "n_samples", base.n_samples, ...
+    "duration_s", 3600, "n_trials", 72, "keep_ts1", true);
+wl = nexrad_asr11_mag_rev1(o_long);
+Rl = wl.scan_max.asr_rev(wl.scan_max.asr_rev.complete, :);
+writetable(wl.scan_max.plateaus, fullfile(out_dir, "plateaus_rev4.csv"));
+writetable(wl.scan_max.asr_rev_pct, fullfile(out_dir, "asr_rev_pct_72h_rev4.csv"));
+lev_hi = wl.ref_levels.mag_dBi(3) + 1;                % above the 45.5 dBi plateau
+pk = Rl(Rl.max_g21_dBi >= lev_hi, ["trial", "rev", "t_at_max_s", "max_g21_dBi", ...
+    "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "nexrad_az_off_at_max_deg", ...
+    "asr11_gain_at_max_dBi", "asr11_az_off_at_max_deg"]);
+writetable(sortrows(pk, "max_g21_dBi", "descend"), fullfile(out_dir, "peaks_above_plateau_72h_rev4.csv"));
+lv = [wl.ref_levels.mag_dBi(5), 30, 40, wl.ref_levels.mag_dBi(3), 50, 60, 70, wl.ref_levels.mag_dBi(1) - 0.2];
+exc = table(lv(:), arrayfun(@(v) sum(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
+    arrayfun(@(v) 100*mean(Rl.max_g21_dBi >= v - 0.2), lv(:)), ...
+    'VariableNames', ["level_dBi", "revolutions", "pct_of_revolutions"]);
+exc.per_hour = exc.revolutions/72;
+writetable(exc, fullfile(out_dir, "rev_exceedance_72h_rev4.csv"));
+
+% ---- Sample-size convergence of the time-weighted percentiles (worst mode)
+n_list = [5e5 5e6 2e7];
+cv = cell(numel(n_list), 1);
+for k = 1:numel(n_list)
+    r = nexrad_asr11_mag_rev1(struct("seed", base.seed, "vcp", 212, "sails", 3, ...
+        "n_samples", n_list(k), "duration_s", 60, "n_trials", 1));
+    q = r.cdf.pct21(r.cdf.pct21.pct >= 99, :);
+    cv{k} = [table(n_list(k) + zeros(height(q), 1), 'VariableNames', "n_samples"), q];
+end
+writetable(vertcat(cv{:}), fullfile(out_dir, "convergence_rev4.csv"));
 writetable(env.pct, fullfile(out_dir, "mode_envelope_rev4.csv"));
 
 c = struct("dark", [22 51 83]/255, "blue", [86 116 196]/255, ...
@@ -135,23 +170,61 @@ ylim(ax, [1e-4 100]); xlim(ax, [-25 82]);
 ax.YGrid = "on";
 save_fig(f, out_dir, "fig4_exceedance");
 
-% ---- Figure 5: maximum MAG per ASR-11 revolution ---------------------------
-f = new_fig(6.5, 3.0);
+% ---- Figure 5: maximum MAG per ASR-11 revolution, trial 1, peaks labeled ----
+f = new_fig(6.5, 3.4);
 ax = axes(f);
-Rv = w.scan_max.asr_rev(w.scan_max.asr_rev.trial == 1 & w.scan_max.asr_rev.complete, :);
+Rv = wl.scan_max.asr_rev(wl.scan_max.asr_rev.trial == 1 & wl.scan_max.asr_rev.complete, :);
+R = wl.ref_levels;
+P = wl.scan_max.plateaus;
 plot(ax, Rv.t_start_s, Rv.max_g21_dBi, "-", "Color", c.blue, "LineWidth", 0.9); hold(ax, "on");
-yline(ax, R.mag_dBi(5), ":", "Color", c.dark);
-yline(ax, R.mag_dBi(3), ":", "Color", c.dark);
-yline(ax, R.mag_dBi(1), ":", "Color", c.dark);
-put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe, %.1f dBi (every revolution)", R.mag_dBi(5)), c.dark, false);
-put_label(ax, 20, R.mag_dBi(3) + 2.5, sprintf("NEXRAD main beam + ASR-11 back lobe, %.1f dBi (%.1f%% of revolutions)", ...
-    R.mag_dBi(3), R.asr_rev_reached_pct(3)), c.dark, false);
-put_label(ax, 20, R.mag_dBi(1) + 3, sprintf("Main beam to main beam, %.1f dBi", R.mag_dBi(1)), c.dark, false);
+lev09 = P.level_dBi(P.el_deg == 0.9);
+for v = [R.mag_dBi(5), lev09, R.mag_dBi(3), R.mag_dBi(1)]
+    yline(ax, v, ":", "Color", c.dark);
+end
+put_label(ax, 20, R.mag_dBi(5) - 3, sprintf("ASR-11 main beam + NEXRAD back lobe, %.1f dBi (every revolution)", R.mag_dBi(5)), c.dark, false, "left", "w");
+put_label(ax, 3580, lev09 - 2.2, sprintf("NEXRAD main beam at 0.9 deg + ASR-11 back lobe, %.1f dBi", lev09), c.dark, false, "right", "w");
+put_label(ax, 3580, R.mag_dBi(3) - 2.2, sprintf("NEXRAD main beam at 0.5 deg + ASR-11 back lobe, %.1f dBi (%.1f%% of revolutions)", ...
+    R.mag_dBi(3), P.simulated_rev_pct(P.el_deg == 0.5)), c.dark, false, "right", "w");
+put_label(ax, 20, R.mag_dBi(1) + 2.5, sprintf("Main beam to main beam, %.1f dBi", R.mag_dBi(1)), c.dark, false, "left", "w");
+% Label every peak between the 45.5 dBi plateau and main beam to main beam.
+% Main beam = within 3 dB of that antenna's peak gain on the path (NEXRAD at
+% the cut's tilt).
+pk1 = Rv(Rv.max_g21_dBi >= lev_hi, :);
+yoff = [5.5, 1.8, 4.5, 3, 2];
+for k = 1:height(pk1)
+    txt = peak_text(pk1(k, :), P, wl.ref_levels.asr11_gain_dBi(1));
+    ha = "left"; dx = 40;
+    if pk1.t_start_s(k) > 1800
+        ha = "right"; dx = -40;
+    end
+    put_label(ax, pk1.t_start_s(k) + dx, pk1.max_g21_dBi(k) + yoff(mod(k - 1, 5) + 1), txt, c.blue, true, ha, "w");
+end
 style(ax, c, "Time (s), trial 1", "Maximum MAG per revolution (dBi)", "");
 ylim(ax, [15 85]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
-% ---- Figure 6: main beam to main beam versus the statistical MAG -------------
+% ---- Figure 6: anatomy of the two largest peaks in trial 1 --------------------
+T1 = wl.scan_max.ts1;
+[~, o] = sort(pk1.max_g21_dBi, "descend");
+f = new_fig(6.5, 3.0);
+tl = tiledlayout(f, 1, 2, "TileSpacing", "compact", "Padding", "compact");
+for k = 1:min(2, numel(o))
+    ax = nexttile(tl);
+    t0 = pk1.t_at_max_s(o(k));
+    i = abs(T1.t_s - t0) <= 0.4;
+    tt = T1.t_s(i) - t0;
+    plot(ax, tt, T1.nexrad_gain_dBi(i), "-", "Color", c.gray, "LineWidth", 1.2); hold(ax, "on");
+    plot(ax, tt, T1.asr11_gain_dBi(i), "--", "Color", c.purple, "LineWidth", 1.2);
+    plot(ax, tt, T1.g21_dBi(i), "-", "Color", c.blue, "LineWidth", 2.0);
+    put_label(ax, 0.38, 80, sprintf("MAG, peak %.1f dBi", pk1.max_g21_dBi(o(k))), c.blue, true, "right");
+    put_label(ax, 0.38, 72, "NEXRAD gain toward ASR-11", c.gray, false, "right");
+    put_label(ax, 0.38, 64, "ASR-11 gain toward NEXRAD", c.purple, true, "right");
+    style(ax, c, "Time from peak (s)", "Gain (dBi)", sprintf("%s. Peak at t = %.1f s", char(96 + k), t0));
+    ylim(ax, [-15 85]); xlim(ax, [-0.4 0.4]);
+end
+save_fig(f, out_dir, "fig6_peak_anatomy");
+
+% ---- Figure 7: main beam to main beam versus the statistical MAG -------------
 %      MAG against percent of time exceeded, from the CDF arrays
 f = new_fig(6.5, 3.2);
 ax = axes(f);
@@ -178,7 +251,7 @@ put_label(ax, 0.01, 65, "Paper baseline", c.purple, true, "right");
 put_label(ax, 0.01, 37, "VCP 215", c.gray, false, "right");
 style(ax, c, "Time exceeded (%, log scale)", "Mutual antenna gain (dBi)", "");
 xlim(ax, [1e-3 1]); ylim(ax, [10 85]);
-save_fig(f, out_dir, "fig6_mbmb_vs_statistical");
+save_fig(f, out_dir, "fig7_mbmb_vs_statistical");
 A3 = {res{i_p}.cdf.cdf_array21, res{i_215}.cdf.cdf_array21, res{i_w}.cdf.cdf_array21};   % opts.cdf_pct grid
 cdf_tab = array2table([A3{1}(:, 1), A3{1}(:, 2), A3{2}(:, 2), A3{3}(:, 2)], ...
     "VariableNames", ["pct", "paper_baseline_dBi", "vcp215_dBi", "worst_mode_dBi"]);
@@ -191,6 +264,29 @@ writetable([table(repmat(T.case(i_p), height(Sp), 1), 'VariableNames', "case"), 
 fprintf("Figures and tables written to %s\n", out_dir);
 
 % =========================================================================
+function txt = peak_text(r, P, g_asr_max)
+% Short label: which beams make the peak. "Main beam" = within 3 dB of the
+% antenna's peak gain on the path (the NEXRAD at the cut's tilt).
+g_n_mb = P.nexrad_gain_on_path_dBi(P.el_deg == r.nexrad_el_at_max_deg);
+if isempty(g_n_mb)
+    g_n_mb = NaN;
+end
+n_mb = r.nexrad_gain_at_max_dBi >= g_n_mb - 3;
+a_mb = r.asr11_gain_at_max_dBi >= g_asr_max - 3;
+if n_mb && a_mb
+    txt = sprintf("%.1f dBi: both main beams (NEXRAD %.1f deg cut)", r.max_g21_dBi, r.nexrad_el_at_max_deg);
+elseif a_mb
+    txt = sprintf("%.1f dBi: ASR-11 main beam + NEXRAD %.1f deg cut, beam %.1f deg off path", ...
+        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.nexrad_az_off_at_max_deg));
+elseif n_mb
+    txt = sprintf("%.1f dBi: NEXRAD main beam (%.1f deg cut) + ASR-11 beam %.1f deg off path", ...
+        r.max_g21_dBi, r.nexrad_el_at_max_deg, abs(r.asr11_az_off_at_max_deg));
+else
+    txt = sprintf("%.1f dBi: NEXRAD %.1f deg cut + ASR-11, both off axis", r.max_g21_dBi, r.nexrad_el_at_max_deg);
+end
+end
+
+% -------------------------------------------------------------------------
 function st = state_az(az, tilt)
 z = zeros(numel(az), 1);
 st = struct("mech_az", az(:), "tilt", tilt + z, "steer_az", z, "steer_el", z);
@@ -228,16 +324,19 @@ if ttl ~= ""
 end
 end
 
-function put_label(ax, x, y, s, col, bold, halign)
+function put_label(ax, x, y, s, col, bold, halign, bg)
 if nargin < 7
     halign = "left";
+end
+if nargin < 8
+    bg = "none";
 end
 w = "normal";
 if bold
     w = "bold";
 end
 text(ax, x, y, s, "Color", col, "FontWeight", w, "FontName", "Times New Roman", ...
-    "FontSize", 8, "HorizontalAlignment", halign);
+    "FontSize", 8, "HorizontalAlignment", halign, "BackgroundColor", bg, "Margin", 0.5);
 end
 
 function save_fig(f, d, name)
