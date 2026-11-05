@@ -673,7 +673,7 @@ switch ant_p.type
     case "f1245"
         % F.1245 main beam: 2.5e-3*(D/lambda*bw/2)^2 = 3, capped at phi_m.
         bw = 2*min(sqrt(3/2.5e-3)/ant_p.f.dl, ant_p.f.phi_m);
-    case {"rect", "parabolic"}
+    case {"rect", "parabolic", "offaxis_table"}
         bw = ant_p.az_bw_deg;
     case "measured"
         bw = field_or(ant_p, "az_bw_deg", 1);

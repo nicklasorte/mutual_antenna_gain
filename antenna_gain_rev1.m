@@ -15,7 +15,8 @@ function g_dBi = antenna_gain_rev1(ant_p, az_to_deg, el_to_deg, st)
 %
 %   Statgain (the default) uses the off-axis angle from the beam axis,
 %   NTIA TM-13-489 Table 4-1; "f1245" uses the same angle with the
-%   Rec. ITU-R F.1245 pattern. Aperture antennas combine azimuth and
+%   Rec. ITU-R F.1245 pattern; "offaxis_table" interpolates a gain table
+%   over the same angle. Aperture antennas combine azimuth and
 %   elevation cuts in dB,
 %   Rec. ITU-R M.1851-2 Eq. (15). Planar arrays use M.1851-2 Eqs (50)-(53).
 %
@@ -45,6 +46,9 @@ switch ant_p.type
         % (M.1851-2 Section 4.1).
         gam = off_axis_deg(az_off, el_to_deg, st.tilt);
         g_dBi = ant_p.g_max_dBi + max(parabolic_cut_dB(ant_p.cut, gam), ant_p.floor_dB);
+
+    case "offaxis_table"
+        g_dBi = ant_p.g_max_dBi + ant_p.off_interp(off_axis_deg(az_off, el_to_deg, st.tilt));
 
     case "measured"
         g = ant_p.az_interp(az_off);

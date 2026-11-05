@@ -53,6 +53,16 @@ function ant_p = antenna_prepare_rev1(ant)
 %       .g_max_dBi, .az_bw_deg (3 dB beamwidth), .az_sll_dB, .envelope,
 %       .floor_dB (optional; default M.1851-2 Table 13 floor)
 %
+%   "offaxis_table"  Rotationally symmetric pencil beam given as gain
+%           versus the off-axis angle from the beam axis (linear
+%           interpolation in dB). Use it for measured or specified
+%           pencil-beam envelopes such as the WSR-88D antenna.
+%       .g_max_dBi    peak gain (dBi)
+%       .offaxis_deg  increasing angles from 0 to 180 deg
+%       .gain_dB      gain relative to peak (0 dB at 0 deg, <= 0)
+%       .az_bw_deg    optional 3 dB beamwidth; default from the -3 dB
+%                     crossing of the table (sets the time step only)
+%
 %   "measured"  Digitized principal-plane cuts (M.1851-2 recommends 5).
 %       .g_max_dBi
 %       .az_deg, .az_gain_dB   azimuth cut, -180..180 deg, gain relative to
@@ -155,12 +165,24 @@ switch ant_p.type
             ant_p.el_interp = [];
         end
 
+    case "offaxis_table"
+        must_have_field(ant, ["g_max_dBi", "offaxis_deg", "gain_dB"]);
+        ant_p.off_interp = make_offaxis_interp(ant.offaxis_deg, ant.gain_dB);
+        if isfield(ant, "az_bw_deg") && ~isempty(ant.az_bw_deg)
+            ant_p.az_bw_deg = ant.az_bw_deg;
+        elseif any(ant.gain_dB <= -3)
+            ant_p.az_bw_deg = 2*fzero(@(x) ant_p.off_interp(x) + 3, ...
+                [0, ant.offaxis_deg(find(ant.gain_dB <= -3, 1))]);
+        else
+            ant_p.az_bw_deg = 360;          % never 3 dB down: no beam to resolve
+        end
+
     case "array_planar"
         ant_p = prep_array(ant, ant_p);
 
     otherwise
         error("radar_coupling:badAntennaType", ...
-            "ant.type must be ""statgain"", ""f1245"", ""rect"", ""parabolic"", ""measured"" or ""array_planar"", got ""%s"".", ant_p.type);
+            "ant.type must be ""statgain"", ""f1245"", ""rect"", ""parabolic"", ""measured"", ""offaxis_table"" or ""array_planar"", got ""%s"".", ant_p.type);
 end
 end
 
@@ -390,6 +412,22 @@ psi = (-n_fft/2:n_fft/2-1)' * (2*pi/n_fft);           % [-pi, pi)
 psi = [psi; pi];
 p = [p; p(1)];
 af = griddedInterpolant(psi, p, "linear", "none");
+end
+
+% -------------------------------------------------------------------------
+function gi = make_offaxis_interp(ang_deg, gain_dB)
+% Off-axis table must span 0..180 deg, increase strictly and peak at 0 dB.
+ang_deg = ang_deg(:);
+gain_dB = gain_dB(:);
+if numel(ang_deg) ~= numel(gain_dB) || numel(ang_deg) < 2 || any(diff(ang_deg) <= 0) ...
+        || abs(ang_deg(1)) > 1e-12 || abs(ang_deg(end) - 180) > 1e-9
+    error("radar_coupling:badOffaxisTable", ...
+        "offaxis_deg must increase strictly from 0 to 180 deg and match gain_dB in length.");
+end
+if abs(gain_dB(1)) > 1e-9 || any(gain_dB > 1e-9)
+    error("radar_coupling:badOffaxisTable", "gain_dB must be 0 dB at 0 deg and <= 0 dB elsewhere.");
+end
+gi = griddedInterpolant(ang_deg, gain_dB, "linear", "nearest");
 end
 
 % -------------------------------------------------------------------------
