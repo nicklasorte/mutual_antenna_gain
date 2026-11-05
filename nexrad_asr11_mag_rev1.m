@@ -23,7 +23,7 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .nexrad_scan      "vcp" (default) | "constant". "constant" is the
 %                       2.7 GHz link budget working paper model: one
 %                       horizon cut at 3 rpm (Table 4.4-1).
-%     .vcp              12 | 35 | 112 | 212 (default) | 215
+%     .vcp              12 | 31 | 32 | 34 | 35 | 112 | 212 (default) | 215
 %     .sails, .mrle, .avset_top_deg, .cd_rate_deg_s
 %                       VCP options, see nexrad_vcp_rev1 (0, 0, Inf, [])
 %     .nexrad_pattern   "nssl_measured" (default) | "roc_spec" | "f1245"

@@ -49,9 +49,9 @@ end
 function testVcpBaseCutCounts(tc)
 % ROC NEXRAD Technical Information elevations; split cuts add one cut each
 % at 0.5, 0.9 and 1.3 deg (two each for VCP 112).
-v = [35 215 212 12 112];
-n_el = [9 15 14 14 14];
-n_cut = [12 18 17 17 20];
+v = [35 215 212 12 112 31 32 34];
+n_el = [9 15 14 14 14 5 5 7];
+n_cut = [12 18 17 17 20 8 7 10];
 for i = 1:numel(v)
     s = nexrad_vcp_rev1(v(i));
     verifyEqual(tc, numel(unique(s.tilt_deg)), n_el(i), sprintf("VCP %d elevations", v(i)));
@@ -98,6 +98,53 @@ function testVcpCdRateOverride(tc)
 s = nexrad_vcp_rev1(215, cd_rate_deg_s=17.106);
 verifyEqual(tc, s.rate_deg_s(s.cuts.waveform == "CD"), 17.106*ones(3, 1));
 verifyEqual(tc, s.rate_deg_s(s.cuts.waveform == "CS"), [11.470 13.370 15.919]');   % unchanged
+end
+
+function testVcpClearAirLongShortPulseMatchDecoded(tc)
+% VCPs 31, 32 and 34 decoded from Level II Message Type 5 (see help).
+el = {[0.5 0.5 1.5 1.5 2.5 2.5 3.5 4.5]', ...
+    [0.5 0.5 1.5 1.5 2.5 3.5 4.5]', ...
+    [0.5 0.5 0.9 0.9 1.3 1.3 1.8 2.4 3.1 4.5]'};
+r = {[5.043 5.065 5.043 5.065 5.043 5.065 5.065 5.065]', ...
+    [4.966 4.548 4.966 4.548 4.065 4.065 4.065]', ...
+    [5.043 8.492 5.043 8.492 5.449 8.492 5.878 8.492 8.492 8.492]'};
+t = [569.538 568.980 524.441];                     % sum of 360/rate (s)
+pw = ["long" "short" "long"];
+v = [31 32 34];
+for i = 1:3
+    s = nexrad_vcp_rev1(v(i));
+    verifyEqual(tc, s.tilt_deg, el{i}, "AbsTol", 1e-12);
+    verifyEqual(tc, s.rate_deg_s, r{i}, "AbsTol", 1e-12);
+    verifyEqual(tc, s.volume_s, t(i), "AbsTol", 0.01);
+    verifyEqual(tc, s.volume_s, sum(360./r{i}), "AbsTol", 1e-9);
+    verifyEqual(tc, s.pulse_width, pw(i));
+end
+end
+
+function testVcpClearAirOptionLimits(tc)
+% ROC: SAILSx1 on VCP 34; no SAILS, MRLE or AVSET on 31 or 32.
+s = nexrad_vcp_rev1(34, sails=1);
+verifyEqual(tc, height(s.cuts), 12);
+verifyEqual(tc, sum(s.cuts.kind == "sails"), 2);
+verifyEqual(tc, s.volume_s, 524.441 + 360/5.043 + 360/8.492, "AbsTol", 0.01);
+verifyError(tc, @() nexrad_vcp_rev1(34, sails=2), "radar_coupling:vcpSails");
+for v = [31 32]
+    verifyError(tc, @() nexrad_vcp_rev1(v, sails=1), "radar_coupling:vcpSails");
+    verifyError(tc, @() nexrad_vcp_rev1(v, mrle=2), "radar_coupling:vcpMrle");
+    verifyError(tc, @() nexrad_vcp_rev1(v, avset_top_deg=6.4), "radar_coupling:vcpAvset");
+end
+for v = [31 32 34 112]
+    verifyError(tc, @() nexrad_vcp_rev1(v, cd_rate_deg_s=15), "radar_coupling:vcpCdRate");
+end
+end
+
+function testVcpLimitsAndSourceReported(tc)
+for v = [12 31 32 34 35 112 212 215]
+    s = nexrad_vcp_rev1(v);
+    verifyTrue(tc, all(isfield(s.limits, ["sails" "mrle" "avset" "cd_rate"])));
+    verifyTrue(tc, startsWith(s.source_file, "K") && endsWith(s.source_file, "_V06"));
+    verifyTrue(tc, any(s.pulse_width == ["short" "long"]));
+end
 end
 
 function testVcpInputErrors(tc)

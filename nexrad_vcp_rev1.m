@@ -7,8 +7,16 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %
 %   scan = nexrad_vcp_rev1(vcp, Name=Value) adds the volume-scan options.
 %
-%   vcp  12, 35, 112, 212 or 215: the VCPs in operational use (ROC VCP
-%        Info Sheet, February 2026; NEXRAD Technical Information, Build 23).
+%   vcp  12, 31, 32, 34, 35, 112, 212 or 215: every WSR-88D VCP found in
+%        operational Level II data from 2024 to 2026 (VCP numbers read from
+%        the files of all WSR-88D sites on six dates). Precipitation
+%        and convective VCPs: 12, 112, 212, 215 (ROC VCP Info Sheet, February
+%        2026). Clear-air VCPs: 31, 32, 34, 35 (NEXRAD Technical Information,
+%        Build 23, lists 31, 34 and 35; VCP 32 is in current data but not in
+%        that table). VCPs 80 and 90 in the same archive belong to the FAA
+%        Terminal Doppler Weather Radar (C band, T-prefixed sites), not the
+%        WSR-88D. Legacy VCPs 11, 21, 121, 211 and 221 did not appear in the
+%        survey.
 %
 %   References:
 %     [ROC_VCP_SHEET] NOAA ROC, "Convective VCP Decision Matrix" (VCP Info
@@ -34,13 +42,21 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %       https://unidata-nexrad-level2.s3.amazonaws.com/2024/04/26/KOAX/KOAX20240426_150526_V06
 %       https://unidata-nexrad-level2.s3.amazonaws.com/2024/07/08/KHGX/KHGX20240708_013308_V06
 %       https://unidata-nexrad-level2.s3.amazonaws.com/2025/02/16/KLWX/KLWX20250216_045233_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2025/01/21/KBLX/KBLX20250121_150258_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2026/01/25/KFTG/KFTG20260125_150512_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2024/01/13/KFCX/KFCX20240113_120111_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2024/01/13/KVBX/KVBX20240113_120454_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2024/01/13/KVTX/KVTX20240113_120525_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2025/01/21/KCAE/KCAE20250121_150523_V06
+%       https://unidata-nexrad-level2.s3.amazonaws.com/2026/01/25/KAMA/KAMA20260125_150301_V06
 %     [METPY] Unidata MetPy 1.7, metpy.io.Level2File (VCP message decoder).
 %       https://unidata.github.io/MetPy/
 %
 %   Name-value options:
 %     sails          SAILS supplemental 0.5 deg scans inserted in the volume
-%                    (default 0). Maximum per VCP (ROC): 35, 112, 215: 1;
-%                    12, 212: 3.
+%                    (default 0). Maximum per VCP (ROC): 34, 35, 112, 215: 1;
+%                    12, 212: 3; 31, 32: none. No decoded VCP 34 file had
+%                    SAILS, so its insert position follows the rule below.
 %     mrle           MRLE: rescan the lowest 2, 3 or 4 elevations midway
 %                    through the volume (default 0). VCPs 12, 212, 215.
 %                    Cannot be used with SAILS.
@@ -52,7 +68,7 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %                    split cuts (default: the decoded value in the table).
 %                    It follows the site's Doppler PRF; decoded values are
 %                    12.524, 14.458, 15.831 and 17.106 deg/s. VCPs 12, 35,
-%                    212, 215.
+%                    212, 215 only.
 %
 %   Source of the cut tables: VCP messages (Message Type 5) in operational
 %   Level II files (NOAA NEXRAD Level II on AWS, unidata-nexrad-level2),
@@ -62,8 +78,13 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %     VCP 212  KLOT 2024-05-07 17:15Z (SAILSx1 removed for the base table)
 %     VCP 12   KFWS 2024-05-28 00:01Z
 %     VCP 112  KTBW 2024-10-09 03:51Z (SAILSx1 removed for the base table)
+%     VCP 31   KBLX 2025-01-21 15:02Z; same at KFTG 2026-01-25 (long pulse)
+%     VCP 32   KFCX 2024-01-13 12:01Z; same at KVBX and KVTX (short pulse)
+%     VCP 34   KCAE 2025-01-21 15:05Z; same at KAMA 2026-01-25 (long pulse)
 %   KOAX, KHGX and KLWX files give the same cuts and rates except the
-%   split-cut Doppler rate (cd_rate_deg_s). Elevations are the nominal
+%   split-cut Doppler rate (cd_rate_deg_s). Pulse width changes the
+%   transmitted waveform, not the antenna pattern or the scan, so it does not
+%   change the MAG. Elevations are the nominal
 %   angles; the files store them quantized (0.5 deg is 0.4834 deg).
 %
 %   Volume time is the sum of 360/rate over the cuts. Elevation
@@ -81,6 +102,10 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %     .tilt_deg       per-cut elevation (deg)
 %     .n_rev          ones
 %     .vcp            VCP number
+%     .use            ROC use of the VCP
+%     .pulse_width    "short" | "long"
+%     .limits         struct: sails (most rescans), mrle, avset, cd_rate
+%     .source_file    Level II file the table was decoded from
 %     .cuts           table: cut, el_deg, waveform, rate_deg_s, dur_s, kind
 %                     ("base" | "sails" | "mrle")
 %     .volume_s       volume time (s)
@@ -130,8 +155,8 @@ if isfinite(opts.avset_top_deg)
     end
 end
 if ~isempty(opts.cd_rate_deg_s)
-    if vcp == 112
-        error("radar_coupling:vcpCdRate", "cd_rate_deg_s is not defined for VCP 112 (two Doppler cuts per split elevation).");
+    if ~lim.cd_rate
+        error("radar_coupling:vcpCdRate", "cd_rate_deg_s is not defined for VCP %d (no site-dependent Doppler rate found).", vcp);
     end
     if ~isscalar(opts.cd_rate_deg_s) || opts.cd_rate_deg_s <= 0 || opts.cd_rate_deg_s > 36
         error("radar_coupling:vcpCdRate", "cd_rate_deg_s must be a scalar in (0, 36] deg/s (pedestal limit 36 deg/s).");
@@ -160,6 +185,10 @@ scan.rate_deg_s = cuts.rate_deg_s;
 scan.tilt_deg = cuts.el_deg;
 scan.n_rev = ones(height(cuts), 1);
 scan.vcp = vcp;
+scan.use = lim.use;
+scan.pulse_width = lim.pulse;
+scan.limits = rmfield(lim, ["use", "pulse", "file"]);
+scan.source_file = lim.file;
 scan.cuts = cuts;
 scan.volume_s = sum(cuts.dur_s);
 scan.options = opts;
@@ -204,38 +233,61 @@ switch vcp
         wf = [cs_cd; repmat("B", 6, 1)];
         r = [4.966 14.458 4.966 14.458 5.471 14.458 ...
             15.491 17.754 16.930 18.073 18.073 18.073]';
-        lim = struct("sails", 1, "mrle", false, "avset", false);
+        lim = struct("sails", 1, "mrle", false, "avset", false, "cd_rate", true, ...
+            "use", "Clear air (default), 0.5-6.4 deg", "pulse", "short", "file", "KDIX20261104_154008_V06");
     case 215    % default precipitation, KDIX 2024-01-09
         el = [lo3; batch; 8.0; 10.0; 12.0; 14.0; 16.7; 19.5];
         wf = [cs_cd; repmat("B", 6, 1); repmat("CDX", 6, 1)];
         r = [11.470 15.831 13.370 15.831 15.919 15.831 ...
             16.776 20.654 19.534 20.237 20.237 20.237 ...
             24.862 25.642 25.642 25.642 25.642 25.642]';
-        lim = struct("sails", 1, "mrle", true, "avset", true);
+        lim = struct("sails", 1, "mrle", true, "avset", true, "cd_rate", true, ...
+            "use", "Default precipitation", "pulse", "short", "file", "KDIX20240109_195311_V06");
     case 212    % rapidly evolving convection, KLOT 2024-05-07
         el = [lo3; batch; hi212];
         wf = [cs_cd; repmat("B", 6, 1); repmat("CDX", 5, 1)];
         r = [21.149 12.524 21.149 12.524 23.027 12.524 ...
             26.389 27.334 28.224 26.400 26.400 26.400 ...
             28.422 28.411 28.740 28.740 28.740]';
-        lim = struct("sails", 3, "mrle", true, "avset", true);
+        lim = struct("sails", 3, "mrle", true, "avset", true, "cd_rate", true, ...
+            "use", "Rapidly evolving convection", "pulse", "short", "file", "KLOT20240507_171514_V06");
     case 12     % rapidly evolving convection, KFWS 2024-05-28
         el = [lo3; batch; hi212];
         wf = [cs_cd; repmat("B", 6, 1); repmat("CDX", 5, 1)];
         r = [21.149 24.994 21.149 24.994 23.027 24.994 ...
             25.719 25.939 26.741 27.598 27.664 27.620 ...
             28.400 28.806 28.488 28.488 28.488]';
-        lim = struct("sails", 3, "mrle", true, "avset", true);
+        lim = struct("sails", 3, "mrle", true, "avset", true, "cd_rate", true, ...
+            "use", "Rapidly evolving convection", "pulse", "short", "file", "KFWS20240528_000104_V06");
     case 112    % large-scale high-velocity systems (MPDA), KTBW 2024-10-09
         el = [repmat(0.5, 3, 1); repmat(0.9, 3, 1); repmat(1.3, 3, 1); batch; hi212];
         wf = [repmat(["CS" "CD" "CD"]', 3, 1); repmat("B", 6, 1); repmat("CDX", 5, 1)];
         r = [18.677 20.028 14.458 19.841 20.028 15.831 21.555 20.028 17.106 ...
             26.389 27.334 28.224 26.400 26.400 26.400 ...
             28.422 28.411 28.740 28.740 28.740]';
-        lim = struct("sails", 1, "mrle", false, "avset", true);
+        lim = struct("sails", 1, "mrle", false, "avset", true, "cd_rate", false, ...
+            "use", "Large-scale, high-velocity systems (MPDA)", "pulse", "short", "file", "KTBW20241009_035113_V06");
+    case 31     % clear air, long pulse, 0.5-4.5 deg, KBLX 2025-01-21 (= KFTG 2026-01-25)
+        el = [0.5 0.5 1.5 1.5 2.5 2.5 3.5 4.5]';
+        wf = ["CS" "CD" "CS" "CD" "CS" "CD" "CDX" "CDX"]';
+        r = [5.043 5.065 5.043 5.065 5.043 5.065 5.065 5.065]';
+        lim = struct("sails", 0, "mrle", false, "avset", false, "cd_rate", false, ...
+            "use", "Clear air, long pulse, 0.5-4.5 deg", "pulse", "long", "file", "KBLX20250121_150258_V06");
+    case 32     % clear air, short pulse, 0.5-4.5 deg, KFCX 2024-01-13 (= KVBX, KVTX)
+        el = [0.5 0.5 1.5 1.5 2.5 3.5 4.5]';
+        wf = ["CS" "CD" "CS" "CD" "B" "B" "B"]';
+        r = [4.966 4.548 4.966 4.548 4.065 4.065 4.065]';
+        lim = struct("sails", 0, "mrle", false, "avset", false, "cd_rate", false, ...
+            "use", "Clear air, short pulse, 0.5-4.5 deg", "pulse", "short", "file", "KFCX20240113_120111_V06");
+    case 34     % clear air, long pulse, 0.5-4.5 deg, KCAE 2025-01-21 (= KAMA 2026-01-25)
+        el = [lo3; 1.8; 2.4; 3.1; 4.5];
+        wf = [cs_cd; "B"; "CDX"; "CDX"; "CDX"];
+        r = [5.043 8.492 5.043 8.492 5.449 8.492 5.878 8.492 8.492 8.492]';
+        lim = struct("sails", 1, "mrle", false, "avset", false, "cd_rate", false, ...
+            "use", "Clear air, long pulse, 0.5-4.5 deg", "pulse", "long", "file", "KCAE20250121_150523_V06");
     otherwise
         error("radar_coupling:badVcp", ...
-            "VCP %g is not tabulated; use 12, 35, 112, 212 or 215.", vcp);
+            "VCP %g is not tabulated; use 12, 31, 32, 34, 35, 112, 212 or 215.", vcp);
 end
 cuts = table(el, wf, r, 'VariableNames', ["el_deg", "waveform", "rate_deg_s"]);
 end

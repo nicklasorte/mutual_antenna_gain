@@ -2,7 +2,7 @@
 
 # Methodology report: mutual antenna gain between scanning radars
 
-Revision 4, draft of November 5, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `docs/methodology-report-rev4`, commit `99d3000fe59a62234992e34e36a25a9913d5161a`. This report comes from the code, its comments, and runs of the code in MATLAB.
+Revision 4, draft of November 5, 2026. Source: repository `nicklasorte/mutual_antenna_gain`, branch `feature/all-wsr88d-vcps`, commit `d367a9047512c436434538e1d61f153c38c2c4a4` (VCP tables and sweep) and commit `99d3000fe59a62234992e34e36a25a9913d5161a` (other code references). This report comes from the code, its comments, and runs of the code in MATLAB.
 
 Changes from revision 3:
 
@@ -12,13 +12,14 @@ Changes from revision 3:
 - Corrects Case 1 of the example script. Revision 3 called it "Radar B, 34 dBi, 90 degrees per second." In Rec. ITU-R M.1464-2 Table 1, Radar B is 33.5 dBi at 75 degrees per second, so Case 1 now uses Radar D (32.8 dBi, 90 degrees per second).
 - Adds the `offaxis_table` antenna type, per-scan maxima with the gains that make each peak, main-beam and sidelobe reference levels, a hand check of the per-scan plateaus, confidence intervals for every percentile, and a 72-hour time series.
 - Walks through the WSR-88D and ASR-11 example in 11 numbered steps, each with the numbers it produces (Section 7).
+- Covers every WSR-88D VCP in operational data from 2024 to 2026 (12, 31, 32, 34, 35, 112, 212, and 215), found by a survey of all WSR-88D sites on six dates. The clear-air VCPs 31, 32, and 34 are new; they don't change the worst case (Section 7.6).
 
 ## Summary of the WSR-88D and ASR-11 example
 
 - **Main beam to main beam is 79.5 dBi** with both peak gains (45.5 dBi and 34 dBi). On a horizontal path it is 76.0 dBi, because the lowest NEXRAD elevation (0.5°) puts the path 0.5° off the NEXRAD beam axis.
 - **The statistical MAG is far below main beam to main beam.** For the worst NEXRAD scan mode, the 99.9% MAG is 43.3 dBi, 36 dB below the peak-gain value. The 99.999% MAG is 66.9 dBi, 13 dB below.
 - **The share of time that the NEXRAD spends at 0.5° drives the result.** The worst mode is VCP 212 with three SAILS rescans, which spends 44% of each volume at 0.5°.
-- **The unknown mix of NEXRAD modes doesn't change the bound.** For any mix of the 21 modes studied, the 99.9% MAG is at most 43.3 dBi.
+- **The unknown mix of NEXRAD modes doesn't change the bound.** For any mix of the 25 modes studied, which cover every WSR-88D VCP in operational data from 2024 to 2026, the 99.9% MAG is at most 43.3 dBi.
 - **The paper baseline is more conservative in the far tail.** The model of the 2.7 GHz link budget working paper (F.1245 patterns, NEXRAD at 3 rpm on the horizon) gives 62.7 dBi at 99.99%, against 45.5 dBi for the worst VCP.
 - **High peaks are rare but real.** Over 72 hours of the worst mode, the largest MAG in an ASR-11 revolution reached 45.5 dBi or more about 71 times per hour, 60 dBi or more about 2.5 times per hour, and came within 0.2 dB of main beam to main beam about once every 3.6 hours (Section 7.9).
 - **5,000,000 samples are enough through the 99.99% MAG.** The 99.999% MAG has a 95% confidence interval about 4 dB wide at that sample size (Section 7.13).
@@ -121,7 +122,7 @@ The example follows 11 steps. Each step names the code that does the work and th
 | NEXRAD 3 dB beamwidth | 0.925° | NOAA ROC, NEXRAD Technical Information |
 | NEXRAD sidelobes (default) | −35 dB to 2°, −48 dB at 6°, −55 dB at 20° and beyond | NSSL measurements of the KOUN antenna, 1998 report errata |
 | NEXRAD sidelobes (alternative) | −29 dB beyond the main beam, −40 dB beyond 10° | NOAA ROC specification |
-| NEXRAD scan | VCPs 12, 35, 112, 212, and 215, with SAILS, MRLE, and AVSET options | Decoded from operational Level II data (Step 5) |
+| NEXRAD scan | VCPs 12, 31, 32, 34, 35, 112, 212, and 215, with SAILS, MRLE, and AVSET options | Decoded from operational Level II data (Step 5) |
 | ASR-11 peak gain | 34 dBi | Rec. ITU-R M.1464-2 Table 1, Radar C |
 | ASR-11 beamwidths | 1.45° azimuth, 4.8° elevation | Rec. ITU-R M.1464-2 Table 1, Radar C |
 | ASR-11 elevation pattern | Cosecant squared to +30°, Rec. ITU-R M.1851-2 Equations 25 to 27 | Rec. ITU-R M.1464-2 Table 1, Radar C |
@@ -200,7 +201,14 @@ Four limiting combinations frame every result in this section.[^18]
 
 ### 7.6 Step 5: Turn a NEXRAD volume coverage pattern into time weights
 
-The NOAA Radar Operations Center (ROC) lists VCPs 12, 35, 112, 212, and 215 as the modes in use. The cut tables in `nexrad_vcp_rev1` come from the VCP messages in operational Level II files on the NOAA archive, decoded with MetPy. Files from KOAX, KHGX, and KLWX give the same cuts and rates. The one exception is the Doppler cut of the 0.5° to 1.3° split cuts, whose rate follows the site's Doppler PRF (12.524, 14.458, 15.831, or 17.106 degrees per second); `cd_rate_deg_s` sets it.[^25]
+The model covers every WSR-88D VCP found in operational data. To find them, we read the VCP number from the header of the Level II files of all WSR-88D sites (about 155) on six dates from January 2024 to January 2026, in winter, spring, summer, and fall. The survey found eight VCPs:
+
+- **Precipitation and convective VCPs:** 12, 112, 212, and 215. The NOAA Radar Operations Center (ROC) VCP Info Sheet lists these.
+- **Clear-air VCPs:** 31, 32, 34, and 35. ROC NEXRAD Technical Information lists 31, 34, and 35. VCP 32 is not in that table but appears in the 2024 archive.
+
+The same archive holds VCPs 80 and 90, but only at sites whose names start with T. These are FAA Terminal Doppler Weather Radars, which operate in C band, so the model excludes them. The legacy VCPs 11, 21, 121, 211, and 221 didn't appear on any survey date.
+
+The cut tables in `nexrad_vcp_rev1` come from the VCP messages in operational Level II files on the NOAA archive, decoded with MetPy. Each table names the file it came from in `scan.source_file`. Where a VCP was decoded at more than one site (KOAX, KHGX, and KLWX for VCP 212; KFTG for VCP 31; KVBX and KVTX for VCP 32; KAMA for VCP 34), the files give the same cuts and rates. VCPs 31 and 34 use the long pulse and the others the short pulse; pulse width changes the waveform, not the scan or the antenna pattern, so it doesn't change the MAG. The one exception is the Doppler cut of the 0.5° to 1.3° split cuts, whose rate follows the site's Doppler PRF (12.524, 14.458, 15.831, or 17.106 degrees per second); `cd_rate_deg_s` sets it for VCPs 12, 35, 212, and 215.[^25]
 
 Each cut is one full revolution at the cut's azimuth rate, so the cut lasts 360°/rate seconds. Summing the cuts gives the volume time. The share of the volume spent at each elevation is the weight that random sampling gives that elevation. Elevation transitions are not modeled; for VCP 112, the ROC gives 322 s for the 20-cut volume, against 320.1 s here.[^26]
 
@@ -211,6 +219,11 @@ Each cut is one full revolution at the cut's azimuth rate, so the cut lasts 360�
 | 212 | Rapidly evolving convection | 17 | 279.3 | 16.4 | 3 |
 | 12 | Rapidly evolving convection | 17 | 236.4 | 13.3 | 3 |
 | 112 | Large-scale, high-velocity systems | 20 | 320.1 | 19.4 | 1 |
+| 31 | Clear air, long pulse, 0.5° to 4.5° | 8 | 569.5 | 25.0 | None |
+| 32 | Clear air, short pulse, 0.5° to 4.5° | 7 | 569.0 | 26.7 | None |
+| 34 | Clear air, long pulse, 0.5° to 4.5° | 10 | 524.4 | 21.7 | 1 |
+
+The clear-air VCPs rotate slowly (4 to 8.5 degrees per second), so their volumes take 8.7 to 9.5 minutes. A slow rotation lengthens each cut but not its share of the volume, so time at 0.5° stays in the same range as for the precipitation VCPs.
 
 SAILS adds rescans of the 0.5° cuts during the volume. MRLE rescans the lowest two to four elevations midway through the volume and cannot be used with SAILS. AVSET ends the volume at 6.4° or above when no significant echoes lie above that elevation. The worst mode in Step 9 is VCP 212 with three SAILS rescans. Its weights are:
 
@@ -308,7 +321,7 @@ For the NEXRAD, interference on its lowest cuts matters most, because the compos
 
 ### 7.10 Step 9: Repeat for every scan mode
 
-`example_nexrad_asr11_rev1` repeats Steps 5 to 8 for 21 VCP modes and the paper baseline, with seed 20261105, 5,000,000 random samples, and a time series of 4 trials of 3,600 s each.[^27] The table shows the time-weighted MAG on the path from the ASR-11 to the NEXRAD.
+`example_nexrad_asr11_rev1` repeats Steps 5 to 8 for 25 VCP modes and the paper baseline, with seed 20261105, 5,000,000 random samples, and a time series of 4 trials of 3,600 s each.[^27] The table shows the time-weighted MAG on the path from the ASR-11 to the NEXRAD.
 
 | Mode | Time at 0.5° (%) | 99% (dBi) | 99.9% (dBi) | 99.99% (dBi) |
 | --- | --- | --- | --- | --- |
@@ -317,26 +330,32 @@ For the NEXRAD, interference on its lowest cuts matters most, because the compos
 | VCP 35 SAILS×1, Doppler cut at 12.524 degrees per second | 38.7 | 19.6 | 42.7 | 45.5 |
 | VCP 35 SAILS×1 | 38.4 | 19.5 | 42.7 | 45.5 |
 | VCP 12 SAILS×3 | 38.0 | 17.6 | 42.6 | 45.5 |
+| VCP 34 SAILS×1 | 35.7 | 18.9 | 42.2 | 45.5 |
 | VCP 112 SAILS×1 | 32.5 | 18.0 | 41.6 | 45.5 |
 | VCP 215 SAILS×1 | 27.2 | 16.3 | 40.0 | 45.5 |
+| VCP 32 | 26.7 | 14.4 | 39.8 | 45.5 |
+| VCP 31 | 25.0 | 14.0 | 39.0 | 45.5 |
 | VCP 35 | 23.8 | 18.3 | 38.8 | 45.5 |
+| VCP 34 | 21.7 | 17.6 | 37.7 | 45.5 |
 | VCP 112 | 19.4 | 16.3 | 37.5 | 45.4 |
 | VCP 212 | 16.4 | 15.3 | 36.8 | 45.4 |
 | VCP 215 | 15.7 | 14.4 | 36.4 | 45.4 |
 | VCP 12 | 13.3 | 14.0 | 35.2 | 45.4 |
 | Paper baseline (F.1245, 3 rpm, horizon) | Not applicable (0° tilt) | 22.5 | 42.4 | 62.7 |
 
-The full table, including the MRLE and AVSET variants, is in `docs/figures/vcp_sweep_rev4.csv`. VCP 212 has a default Doppler-cut rate of 12.524 degrees per second, so its "Doppler cut at 12.524" variant repeats VCP 212 SAILS×3. Figure 3 shows what drives the ranking.
+The full table, including the MRLE and AVSET variants, is in `docs/figures/vcp_sweep_rev4.csv`. VCP 212 has a default Doppler-cut rate of 12.524 degrees per second, so its "Doppler cut at 12.524" variant repeats VCP 212 SAILS×3. VCPs 31 and 32 allow no SAILS, MRLE, or AVSET, and VCP 34 allows SAILS×1 only, so the sweep has fewer variants of them.
 
-![Line chart of the 99%, 99.9%, and 99.99% MAG against the percentage of volume time at 0.5° for 21 VCP modes, with the paper baseline 99.9% MAG as a reference line.](figures/fig3_low_tilt_driver.png)
+The clear-air VCPs don't change the worst case. Their 99.9% MAG follows the same trend with time at 0.5° as the other modes. Their 99% MAG is lower, because VCPs 31 and 32 have no cuts at 0.9° and 1.3°: the next elevation above 0.5° is 1.5°, which puts the NEXRAD path gain further down its pattern. Figure 3 shows what drives the ranking.
 
-*Figure 3. The more time the NEXRAD spends at 0.5°, the higher the 99.9% coupling. The lines join the 21 VCP modes in order of time at 0.5°. Source: `docs/figures/vcp_sweep_rev4.csv` (2026).*
+![Line chart of the 99%, 99.9%, and 99.99% MAG against the percentage of volume time at 0.5° for 25 VCP modes, with the paper baseline 99.9% MAG as a reference line.](figures/fig3_low_tilt_driver.png)
+
+*Figure 3. The more time the NEXRAD spends at 0.5°, the higher the 99.9% coupling. The lines join the 25 VCP modes in order of time at 0.5°. Source: `docs/figures/vcp_sweep_rev4.csv` (2026).*
 
 The 99.99% MAG is near 45.5 dBi for every VCP mode, because that percentile falls on the 45.49 dBi plateau of Step 8: the NEXRAD main beam at 0.5° plus the ASR-11 remote sidelobe floor. The M.1464-2 remote sidelobe level of the ASR-11 therefore sets this percentile.
 
 ![Exceedance curves of the MAG for the worst VCP mode, VCP 215, the paper baseline, and the envelope of all modes, with the main-beam and sidelobe reference levels.](figures/fig4_exceedance.png)
 
-*Figure 4. Below 0.01% of the time, the worst VCP mode couples far less than the paper baseline. The dashed dark line is the envelope of all 21 VCP modes. The dotted lines are reference levels: a, main beam to main beam on the path (76.0 dBi); b, NEXRAD main beam and ASR-11 near sidelobe (49.2 dBi); c, NEXRAD main beam and ASR-11 back lobe (45.5 dBi); d, ASR-11 main beam and NEXRAD near sidelobe (44.5 dBi); e, ASR-11 main beam and NEXRAD back lobe (24.5 dBi). Source: `docs/figures/ref_levels_rev4.csv` (2026).*
+*Figure 4. Below 0.01% of the time, the worst VCP mode couples far less than the paper baseline. The dashed dark line is the envelope of all 25 VCP modes. The dotted lines are reference levels: a, main beam to main beam on the path (76.0 dBi); b, NEXRAD main beam and ASR-11 near sidelobe (49.2 dBi); c, NEXRAD main beam and ASR-11 back lobe (45.5 dBi); d, ASR-11 main beam and NEXRAD near sidelobe (44.5 dBi); e, ASR-11 main beam and NEXRAD back lobe (24.5 dBi). Source: `docs/figures/ref_levels_rev4.csv` (2026).*
 
 ### 7.11 Step 10: Compare main beam to main beam with the statistical MAG
 
@@ -366,14 +385,14 @@ Participants at the meeting noted that VCP choice depends on the weather, the si
 
 Let mode i have weight wᵢ ≥ 0, with the weights summing to 1. The exceedance of the mixture is P_mix(G > x) = Σ wᵢ Pᵢ(G > x), which is at most the largest Pᵢ(G > x). At x equal to the largest p-percentile over the modes, every Pᵢ(G > x) is at most 1 − p/100. The p-percentile of the mixture is therefore at most the largest p-percentile over the modes.[^20]
 
-| Percentile | Envelope over 21 VCP modes (dBi) | Worst mode |
+| Percentile | Envelope over 25 VCP modes (dBi) | Worst mode |
 | --- | --- | --- |
 | 99% | 19.6 | VCP 35 SAILS×1, Doppler cut at 12.524 degrees per second |
 | 99.9% | 43.3 | VCP 212 SAILS×3 |
 | 99.99% | 45.5 | VCP 212 SAILS×3 |
 | 99.999% | 67.0 | VCP 12 SAILS×3, Doppler cut at 12.524 degrees per second |
 
-The bound covers only the modes in the envelope. A future NEXRAD mode, or a Radar Next scan strategy, needs its own run, and the envelope then takes the larger value. All operational VCPs rotate a full 360°, so pointing a scan toward the ATC radar does not change the result. A sector scan centered on the ATC radar would need a separate model.
+The bound covers only the modes in the envelope. The 25 modes include every WSR-88D VCP in the 2024 to 2026 survey (Step 5), so the bound holds for any mix of current operations. A future NEXRAD mode, or a Radar Next scan strategy, needs its own run, and the envelope then takes the larger value. All operational VCPs rotate a full 360°, so pointing a scan toward the ATC radar does not change the result. A sector scan centered on the ATC radar would need a separate model.
 
 ### 7.13 Sample size
 
@@ -522,7 +541,7 @@ graph TD
 
 [^1]: radar_mutual_gain_cdf_rev1.m, lines 2 to 19 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/radar_mutual_gain_cdf_rev1.m#L2-L19
 [^2]: example_radar_mutual_gain_rev1.m, lines 1 to 12 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/example_radar_mutual_gain_rev1.m#L1-L12
-[^3]: example_nexrad_asr11_rev1.m, lines 1 to 14 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/example_nexrad_asr11_rev1.m#L1-L14
+[^3]: example_nexrad_asr11_rev1.m, lines 1 to 14 | https://github.com/nicklasorte/mutual_antenna_gain/blob/d367a9047512c436434538e1d61f153c38c2c4a4/example_nexrad_asr11_rev1.m#L1-L14
 [^4]: radar_mutual_gain_cdf_rev1.m, lines 38 to 44 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/radar_mutual_gain_cdf_rev1.m#L38-L44
 [^5]: radar_mutual_gain_cdf_rev1.m, lines 243 to 250 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/radar_mutual_gain_cdf_rev1.m#L243-L250
 [^6]: antenna_gain_rev1.m, off_axis_deg | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/antenna_gain_rev1.m
@@ -544,9 +563,9 @@ graph TD
 [^22]: nexrad_asr11_mag_rev1.m, lines 234 to 344 (assumptions and citations) | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/nexrad_asr11_mag_rev1.m#L234-L344
 [^23]: nexrad_asr11_mag_rev1.m, lines 268 to 272 and 440 to 456 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/nexrad_asr11_mag_rev1.m#L268-L272
 [^24]: nexrad_asr11_mag_rev1.m, lines 389 to 401 (pencil_table) | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/nexrad_asr11_mag_rev1.m#L389-L401
-[^25]: nexrad_vcp_rev1.m, lines 1 to 101 (help and references) | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/nexrad_vcp_rev1.m#L1-L101
-[^26]: nexrad_vcp_rev1.m, lines 142 to 241 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/nexrad_vcp_rev1.m#L142-L241
-[^27]: example_nexrad_asr11_rev1.m, lines 16 to 108 | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/example_nexrad_asr11_rev1.m#L16-L108
+[^25]: nexrad_vcp_rev1.m, lines 1 to 122 (help, references and survey) | https://github.com/nicklasorte/mutual_antenna_gain/blob/d367a9047512c436434538e1d61f153c38c2c4a4/nexrad_vcp_rev1.m#L1-L122
+[^26]: nexrad_vcp_rev1.m, lines 124 to 291 | https://github.com/nicklasorte/mutual_antenna_gain/blob/d367a9047512c436434538e1d61f153c38c2c4a4/nexrad_vcp_rev1.m#L124-L291
+[^27]: example_nexrad_asr11_rev1.m, lines 16 to 104 | https://github.com/nicklasorte/mutual_antenna_gain/blob/d367a9047512c436434538e1d61f153c38c2c4a4/example_nexrad_asr11_rev1.m#L16-L104
 
 [^28]: radar_mutual_gain_cdf_rev1.m, lines 452 to 474 (cdf_array and pct_table) | https://github.com/nicklasorte/mutual_antenna_gain/blob/99d3000fe59a62234992e34e36a25a9913d5161a/radar_mutual_gain_cdf_rev1.m#L452-L474
 

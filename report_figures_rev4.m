@@ -141,7 +141,7 @@ put_label(ax, tl(end), V.p99_99(o(end)) + 1.8, "99.99%", c.gray, false, "right")
 put_label(ax, tl(end), V.p99_9(o(end)) - 2.2, "99.9%", c.blue, true, "right");
 put_label(ax, tl(end), V.p99(o(end)) + 1.8, "99%", c.gray, false, "right");
 put_label(ax, tl(1), T.p99_9(i_p) + 1.6, sprintf("Paper baseline 99.9%%, %.1f dBi", T.p99_9(i_p)), c.purple, true);
-style(ax, c, "NEXRAD time at 0.5 deg (% of volume), 21 VCP modes", "Mutual antenna gain (dBi)", "");
+style(ax, c, sprintf("NEXRAD time at 0.5 deg (%% of volume), %d VCP modes", height(V)), "Mutual antenna gain (dBi)", "");
 ylim(ax, [10 50]); xlim(ax, [tl(1) - 1, tl(end) + 1]);
 save_fig(f, out_dir, "fig3_low_tilt_driver");
 
