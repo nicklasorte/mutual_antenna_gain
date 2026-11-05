@@ -259,10 +259,10 @@ for k = 1:numel(o3)
     text(ax, pk1.t_start_s(o3(k)), pk1.max_g21_dBi(o3(k)) + 1.6, char(96 + k), "Color", c.purple, ...
         "FontName", "Times New Roman", "FontSize", 9, "FontWeight", "bold", "HorizontalAlignment", "center");
     txt = peak_label_rev1(pk1(o3(k), :), P, wl.ref_levels.asr11_gain_dBi(1));
-    put_label(ax, 20, 83 - 3.2*k, sprintf("%c  %s, t = %.0f s", 96 + k, txt, pk1.t_start_s(o3(k))), c.purple, false, "left", "w");
+    put_label(ax, 20, 93 - 3.4*k, sprintf("%c  %s, t = %.0f s", 96 + k, txt, pk1.t_at_max_s(o3(k))), c.purple, false, "left", "w");
 end
 style(ax, c, sprintf("Time (s), trial %d", j_fig), "Maximum MAG per revolution (dBi)", "");
-ylim(ax, [15 88]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
+ylim(ax, [15 95]); xlim(ax, [0 max(Rv.t_start_s) + 5]);
 save_fig(f, out_dir, "fig5_max_per_rev");
 
 % ---- Figure 6: anatomy of the two largest peaks in trial j_fig ---------------
