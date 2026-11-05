@@ -1,0 +1,6 @@
+combination,mag_dBi,nexrad_gain_dBi,asr11_gain_dBi,time_exceeded_pct,asr_rev_reached_pct
+Main beam to main beam,75.4937910883876,41.9937910883876,33.5,0,0.0445037828215398
+NEXRAD main beam + ASR-9 near sidelobe,48.5456305914991,41.9937910883876,6.55183950311146,0.00492,0.478415665331553
+NEXRAD main beam + ASR-9 back lobe,45.4937910883876,41.9937910883876,3.5,0.00564,11.0035603026257
+ASR-9 main beam + NEXRAD near sidelobe,44,10.5,33.5,0.0972,11.1481975967957
+ASR-9 main beam + NEXRAD back lobe,24,-9.5,33.5,0.49078,100

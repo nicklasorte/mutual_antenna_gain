@@ -10,6 +10,10 @@
 %     fig6_peak_anatomy.png       gains around the two largest peaks (120 h run, the
 %                                 trial with the most peaks above the 45.5 dBi plateau)
 %     fig8_sensitivity.png        MAG change for each antenna and scan assumption
+%     fig9_asr9_comparison.png    ASR-9 and ASR-11 azimuth patterns and exceedance
+%     asr9_*_rev4.csv             ASR-9 sweep, envelope, comparison with the ASR-11,
+%                                 reference levels, lobe pairs, persistence, MAG
+%                                 choices and assumptions (example_asr9_rev1)
 %     plateaus_rev4.csv, peaks_above_plateau_120h_rev4.csv, rev_exceedance_120h_rev4.csv,
 %     asr_rev_pct_120h_rev4.csv, convergence_rev4.csv
 %     lobe_pairs_rev4.csv         time share and largest MAG per pattern-region pair
@@ -21,6 +25,14 @@
 %     ref_levels_rev4.csv, by_elevation_rev4.csv, asr_rev_pct_rev4.csv,
 %     sensitivity_rev4.csv, mode_envelope_rev4.csv, mbmb_vs_statistical_rev4.csv,
 %     cdf_array_rev4.csv (CDF arrays: percent 0-100 and MAG dBi)
+%     Tables typed in the report, exported here so every number has a file:
+%     case1_percentiles_rev4.csv  Case 1 of example_radar_mutual_gain_rev1 (Section 12)
+%     vcp_table_rev4.csv          VCP use, cuts, volume time, time at 0.5 deg (Step 5)
+%     worst_mode_weights_rev4.csv time weights of the worst mode by elevation (Step 5)
+%     nexrad_gain_by_cut_rev4.csv NEXRAD gain toward the ASR-11, beam azimuth on the path (Step 2)
+%     asr11_gain_cut_rev4.csv     ASR-11 gain toward the NEXRAD by azimuth offset (Step 3)
+%     fig_a1_call_tree.png        call tree of the repository functions (Appendix A),
+%                                 from matlab.codetools.requiredFilesAndProducts
 %   Style: NTIA palette (mid gray context, light blue highlight, purple
 %   second highlight, dark blue text), Times New Roman, 6.5 in wide.
 %   Titles, captions and sources are in the report text, not the images.
@@ -29,20 +41,23 @@
 %   (trials of the long run), long_duration_s (seconds per long-run trial)
 %   and n_list (convergence sample sizes) replace the defaults.
 
+% ---- Case 1 of example_radar_mutual_gain_rev1 (Section 12 table). It runs
+%      first, because each example script clears the workspace except
+%      example_overrides.
+example_radar_mutual_gain_rev1;
+if ~exist("example_overrides", "var")
+    example_overrides = struct();
+end
+writetable(res{1}.pct21, fullfile(report_dir(example_overrides), "case1_percentiles_rev4.csv"));
+
 example_nexrad_asr11_rev1;          % defines T, V, res, w, i999, i99
 close all;
 
-out_dir = fullfile(fileparts(mfilename("fullpath")), "docs", "figures");
+out_dir = report_dir(example_overrides);
 n_h = 120;
 n_list = [5e5 5e6 2e7];
-if exist("example_overrides", "var")
-    if isfield(example_overrides, "out_dir"), out_dir = example_overrides.out_dir; end
-    if isfield(example_overrides, "n_h"), n_h = example_overrides.n_h; end
-    if isfield(example_overrides, "n_list"), n_list = example_overrides.n_list; end
-end
-if ~isfolder(out_dir)
-    mkdir(out_dir);
-end
+if isfield(example_overrides, "n_h"), n_h = example_overrides.n_h; end
+if isfield(example_overrides, "n_list"), n_list = example_overrides.n_list; end
 writetable(T, fullfile(out_dir, "vcp_sweep_rev4.csv"));
 writetable(w.ref_levels, fullfile(out_dir, "ref_levels_rev4.csv"));
 writetable(w.scan_max.by_elevation, fullfile(out_dir, "by_elevation_rev4.csv"));
@@ -124,6 +139,21 @@ example_sensitivity_rev1;           % defines Tsens
 writetable(Tsens, fullfile(out_dir, "sensitivity_sweep_rev4.csv"));
 example_asr11_drift_rev1;           % defines Tdrift
 writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev4.csv"));
+
+% ---- ASR-9 (M.1464-2 Radar B): every VCP mode, envelope, and the paired
+%      comparison with the ASR-11 at the ASR-9's worst mode
+asr9_base = struct("seed", base.seed, "n_samples", base.n_samples, ...
+    "duration_s", base.duration_s, "n_trials", base.n_trials);
+example_asr9_rev1;                  % defines T9, env9, w9, w11, Tcmp9, cmp9_label
+writetable(T9, fullfile(out_dir, "asr9_vcp_sweep_rev4.csv"));
+writetable(env9.pct, fullfile(out_dir, "asr9_mode_envelope_rev4.csv"));
+writetable(Tcmp9, fullfile(out_dir, "asr9_comparison_rev4.csv"));
+writetable(w9.ref_levels, fullfile(out_dir, "asr9_ref_levels_rev4.csv"));
+writetable(w9.lobe_pairs, fullfile(out_dir, "asr9_lobe_pairs_rev4.csv"));
+writetable(w9.scan_max.persistence, fullfile(out_dir, "asr9_persistence_rev4.csv"));
+writetable(w9.scan_max.persistence_volume, fullfile(out_dir, "asr9_persistence_volume_rev4.csv"));
+writetable(w9.sensitivity, fullfile(out_dir, "asr9_sensitivity_rev4.csv"));
+writetable(w9.assumptions, fullfile(out_dir, "asr9_assumptions_rev4.csv"));
 
 c = struct("dark", [22 51 83]/255, "blue", [86 116 196]/255, ...
     "purple", [110 79 146]/255, "gray", [138 141 145]/255, "grid", [230 230 230]/255);
@@ -346,9 +376,97 @@ ylim(ax, [0.4 n_s + 1.1]); xlim(ax, [-xr - 1, xr + 1]);
 ax.YGrid = "off";
 save_fig(f, out_dir, "fig8_sensitivity");
 
+% ---- Figure 9: ASR-9 and ASR-11, azimuth patterns and exceedance ------------
+f = new_fig(6.5, 3.0);
+tl = tiledlayout(f, 1, 2, "TileSpacing", "compact", "Padding", "compact");
+ax = nexttile(tl);
+p11 = antenna_prepare_rev1(w11.sys_asr11.tx);
+p9 = antenna_prepare_rev1(w9.sys_asr11.tx);
+semilogx(ax, x, antenna_gain_rev1(p11, 0, 0, st), "-", "Color", c.gray, "LineWidth", 1.4); hold(ax, "on");
+semilogx(ax, x, antenna_gain_rev1(p9, 0, 0, st), "-", "Color", c.blue, "LineWidth", 2);
+put_label(ax, 0.012, 12, "ASR-11, M.1464-2 Radar C", c.gray, false);
+put_label(ax, 0.012, 7, "ASR-9, M.1464-2 Radar B", c.blue, true);
+style(ax, c, "Azimuth offset (deg, log scale)", "Gain (dBi)", "a. Azimuth patterns");
+ylim(ax, [-5 40]); xlim(ax, [0.01 180]);
+ax = nexttile(tl);
+semilogy(ax, w11.cdf.cdf21.gain_dBi, w11.cdf.cdf21.exceed_pct, "-", "Color", c.gray, "LineWidth", 1.4); hold(ax, "on");
+semilogy(ax, w9.cdf.cdf21.gain_dBi, w9.cdf.cdf21.exceed_pct, "-", "Color", c.blue, "LineWidth", 2);
+semilogy(ax, env9.exceed.gain_dBi, max(env9.exceed.envelope_exceed_pct, 1e-6), "--", "Color", c.dark, "LineWidth", 1.0);
+put_label(ax, -20, 3e-4, "Dashed: ASR-9 envelope of all " + height(T9) + " VCP modes", c.dark, false);
+put_label(ax, 78, 30, "ASR-9 (blue), ASR-11 (gray)", c.dark, false, "right");
+put_label(ax, 78, 10, string(cmp9_label), c.dark, false, "right");
+style(ax, c, "Mutual antenna gain (dBi)", "Time exceeded (%, log scale)", "b. Exceedance");
+ylim(ax, [1e-4 100]); xlim(ax, [-25 82]);
+ax.YGrid = "on";
+save_fig(f, out_dir, "fig9_asr9_comparison");
+
+% ---- Tables typed in the report (Steps 2, 3 and 5) -------------------------
+vl = [35 31 32 34 215 212 12 112];
+vt = cell(numel(vl), 1);
+for k = 1:numel(vl)
+    sv = nexrad_vcp_rev1(vl(k));
+    vt{k} = {vl(k), sv.use, height(sv.cuts), sv.volume_s, ...
+        100*sum(sv.cuts.dur_s(sv.cuts.el_deg == 0.5))/sv.volume_s, sv.limits.sails, string(sv.pulse_width)};
+end
+writetable(cell2table(vertcat(vt{:}), "VariableNames", ["vcp", "use", "cuts", "volume_s", ...
+    "t_low_pct", "max_sails", "pulse_width"]), fullfile(out_dir, "vcp_table_rev4.csv"));
+sw = res{i_w}.sys_nexrad.scan;
+[Gw, elw] = findgroups(sw.cuts.el_deg);
+rates = splitapply(@(r) strjoin(string(unique(r)'), " "), sw.cuts.rate_deg_s, Gw);
+tw = splitapply(@sum, sw.cuts.dur_s, Gw);
+writetable(table(elw, splitapply(@numel, sw.cuts.el_deg, Gw), rates, tw, 100*tw/sw.volume_s, ...
+    'VariableNames', ["el_deg", "cuts_per_volume", "rates_deg_s", "time_s", "share_pct"]), ...
+    fullfile(out_dir, "worst_mode_weights_rev4.csv"));
+pn = antenna_prepare_rev1(res{i_w}.sys_nexrad.tx);
+el_all = unique(nexrad_vcp_rev1(212).tilt_deg);
+writetable(table(el_all, antenna_gain_rev1(pn, 0, 0, state_az(zeros(size(el_all)), el_all)), ...
+    'VariableNames', ["el_deg", "nexrad_gain_on_path_dBi"]), fullfile(out_dir, "nexrad_gain_by_cut_rev4.csv"));
+pa = antenna_prepare_rev1(res{i_w}.sys_asr11.tx);
+off = [0; 0.725; 2.9; 10; 90; 180];
+writetable(table(off, antenna_gain_rev1(pa, 0, 0, state_az(off, 0)), ...
+    'VariableNames', ["az_off_deg", "asr11_gain_dBi"]), fullfile(out_dir, "asr11_gain_cut_rev4.csv"));
+
+% ---- Figure A-1: call tree of the repository functions ---------------------
+%      Direct calls only (requiredFilesAndProducts "toponly"); tests and the
+%      small-run helper merge_overrides_rev1 left out for clarity.
+src = fileparts(mfilename("fullpath"));
+fl = string({dir(fullfile(src, "*.m")).name});
+fl = fl(~startsWith(fl, "test_") & fl ~= "merge_overrides_rev1.m");
+stem = erase(fl, ".m");
+e1 = strings(0, 1);
+e2 = strings(0, 1);
+for k = 1:numel(fl)
+    dep = matlab.codetools.requiredFilesAndProducts(fullfile(src, fl(k)), "toponly");
+    [~, dn] = fileparts(string(dep));
+    dn = unique(dn(ismember(dn, stem) & dn ~= stem(k)));
+    e1 = [e1; repmat(stem(k), numel(dn), 1)]; %#ok<AGROW>
+    e2 = [e2; dn(:)]; %#ok<AGROW>
+end
+G = digraph(e1, e2);
+f = new_fig(6.5, 4.6);
+ax = axes(f);
+h = plot(ax, G, "Layout", "layered", "Direction", "down", "NodeColor", c.blue, "EdgeColor", c.gray, ...
+    "MarkerSize", 5, "ArrowSize", 7, "LineWidth", 0.9, "NodeFontName", "Times New Roman", "NodeFontSize", 7, ...
+    "Interpreter", "none");
+h.NodeLabel = replace(G.Nodes.Name, "_rev1", "");
+axis(ax, "off");
+save_fig(f, out_dir, "fig_a1_call_tree");
+writetable(table(e1, e2, 'VariableNames', ["caller", "callee"]), fullfile(out_dir, "call_tree_rev4.csv"));
+
 fprintf("Figures and tables written to %s\n", out_dir);
 
 % =========================================================================
+function d = report_dir(ov)
+% Output folder: docs/figures next to this script, or ov.out_dir (tests).
+d = fullfile(fileparts(mfilename("fullpath")), "docs", "figures");
+if isfield(ov, "out_dir")
+    d = ov.out_dir;
+end
+if ~isfolder(d)
+    mkdir(d);
+end
+end
+
 function st = state_az(az, tilt)
 z = zeros(numel(az), 1);
 st = struct("mech_az", az(:), "tilt", tilt + z, "steer_az", z, "steer_el", z);

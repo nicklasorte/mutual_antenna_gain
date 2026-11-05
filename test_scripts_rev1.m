@@ -110,8 +110,8 @@ end
 function testExampleDrift(tc)
 W = run_script("example_asr11_drift_rev1", struct());
 T = W.Tdrift;
-verifyEqual(tc, height(T), 4);
-verifyEqual(tc, T.ratio, ["1:1"; "2:1"; "6:1"; "74:1"]);
+verifyEqual(tc, height(T), 7);
+verifyEqual(tc, T.ratio, ["1:1"; "2:1"; "6:1"; "74:1"; "1:1"; "1:1"; "74:1"]);
 verifyEqual(tc, T.nominal_episode_s(1:2), [Inf; Inf]);
 verifyEqual(tc, T.nominal_episode_s(3), 360/12.524, "RelTol", 1e-12, "capped at one NEXRAD cut");
 verifyEqual(tc, T{3, ["p_gt_1min", "p_gt_10min", "p_gt_1h", "p_gt_1d", "p_gt_30d"]}, zeros(1, 5));
@@ -122,6 +122,32 @@ verifyTrue(tc, issorted(flip(T{1, 7:end})), "longer episodes are less likely");
 W = T.window_deg(4);
 verifyEqual(tc, W, 1.45 + 74*0.925*(360/W_vol())/12.524, "RelTol", 1e-9);
 verifyEqual(tc, T.p_gt_1h(4), 2*W/3600, "RelTol", 1e-9);
+% ASR-9 rows (M.1464-2 Radar B, 1.3 deg): equal rates give a triangular
+% drift on +/-1 deg/s, so P(T_ep > t) = 1 - (1 - W/t)^2.
+verifyEqual(tc, T.window_deg(5:6), [2.6; 2.75], "RelTol", 1e-12);
+verifyEqual(tc, T.p_gt_1h(5:6), 1 - (1 - [2.6; 2.75]/3600).^2, "RelTol", 1e-9);
+verifyEqual(tc, T.window_deg(7), 1.3 + 74*0.925*(360/W_vol())/12.524, "RelTol", 1e-9);
+verifyLessThan(tc, T.p_gt_1h(7), T.p_gt_1h(4), "narrower ASR-9 beam, shorter lock");
+end
+
+function testExampleAsr9(tc)
+W = run_script("example_asr9_rev1", small());
+verifyEqual(tc, height(W.T9), 74, "every VCP mode, no paper baseline");
+verifyEqual(tc, W.asr9_base.atc_radar, "asr9");
+verifyEqual(tc, W.w9.sys_asr11.name, "ASR-9");
+verifyEqual(tc, W.w11.sys_asr11.name, "ASR-11");
+verifyEqual(tc, W.cmp9_label, W.T9.case(W.j9));
+verifyEqual(tc, W.T9.p99_9(W.j9), max(W.T9.p99_9));
+verifyEqual(tc, W.env9.pct.envelope_dBi', max(W.T9{:, ["p99", "p99_9", "p99_99", "p99_999"]}, [], 1), ...
+    "AbsTol", 0.05, "the envelope is the largest mode at each percentile");
+C = W.Tcmp9;
+verifyEqual(tc, height(C), 15);
+verifyEqual(tc, C.asr9_minus_asr11(1), -0.5, "AbsTol", 1e-9, "peak gains 33.5 and 34 dBi");
+verifyEqual(tc, C.asr9_minus_asr11(2), -0.5, "AbsTol", 1e-6, "main beam on the path");
+verifyEqual(tc, C.asr9_minus_asr11(4), 0, "AbsTol", 1e-6, "same +3.5 dBi remote sidelobe");
+verifyEqual(tc, C.asr9_minus_asr11(6), -0.5, "AbsTol", 1e-6);
+verifyLessThan(tc, C.asr9(end), C.asr11(end), "narrower main-beam region");
+verifyEqual(tc, W.w9.opts.n_trials, 1, "example_overrides sets the comparison trials");
 end
 
 function testPeakLabelBranches(tc)
@@ -148,11 +174,15 @@ ov.long_duration_s = 1200;                      % 1 h in all: peaks above the pl
 ov.n_list = [1e4 2e4];
 run_script("report_figures_rev4", ov);
 png = "fig" + ["1_antenna_patterns", "2_vcp_schedule", "3_low_tilt_driver", "4_exceedance", ...
-    "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity"] + ".png";
+    "5_max_per_rev", "6_peak_anatomy", "7_mbmb_vs_statistical", "8_sensitivity", "9_asr9_comparison", ...
+    "_a1_call_tree"] + ".png";
 csv = ["vcp_sweep", "ref_levels", "by_elevation", "asr_rev_pct", "sensitivity", "plateaus", ...
     "asr_rev_pct_120h", "lobe_pairs", "persistence_120h", "persistence_volume_120h", "peaks_above_plateau_120h", ...
     "rev_exceedance_120h", "convergence", "mode_envelope", "sensitivity_sweep", ...
-    "alignment_dwell", "cdf_array", "mbmb_vs_statistical"] + "_rev4.csv";
+    "alignment_dwell", "cdf_array", "mbmb_vs_statistical", "case1_percentiles", "vcp_table", ...
+    "worst_mode_weights", "nexrad_gain_by_cut", "asr11_gain_cut", "call_tree", ...
+    "asr9_" + ["vcp_sweep", "mode_envelope", "comparison", "ref_levels", "lobe_pairs", ...
+    "persistence", "persistence_volume", "sensitivity", "assumptions"]] + "_rev4.csv";
 for f = [png, csv]
     verifyTrue(tc, isfile(fullfile(d, f)), f);
 end
@@ -162,6 +192,21 @@ C = readtable(fullfile(d, "convergence_rev4.csv"));
 verifyEqual(tc, unique(C.n_samples)', ov.n_list);
 L = readtable(fullfile(d, "lobe_pairs_rev4.csv"));
 verifyEqual(tc, sum(L.time_pct), 100, "AbsTol", 1e-6);
+% Typed report tables match their sources: NEXRAD 41.99 dBi at 0.5 deg
+% (Step 2), ASR-11 34 dBi on the path (Step 3), worst-mode shares sum to 100.
+Nb = readtable(fullfile(d, "nexrad_gain_by_cut_rev4.csv"));
+verifyEqual(tc, Nb.nexrad_gain_on_path_dBi(Nb.el_deg == 0.5), 45.5 - 12*(0.5/0.925)^2, "AbsTol", 1e-3);
+Ab = readtable(fullfile(d, "asr11_gain_cut_rev4.csv"));
+verifyEqual(tc, Ab.asr11_gain_dBi(1), 34, "AbsTol", 1e-9);
+Wb = readtable(fullfile(d, "worst_mode_weights_rev4.csv"));
+verifyEqual(tc, sum(Wb.share_pct), 100, "AbsTol", 1e-9);
+Vt = readtable(fullfile(d, "vcp_table_rev4.csv"));
+verifyEqual(tc, height(Vt), 8);
+Ct = readtable(fullfile(d, "call_tree_rev4.csv"), "TextType", "string");
+verifyTrue(tc, any(Ct.caller == "report_figures_rev4" & Ct.callee == "example_nexrad_asr11_rev1"));
+verifyTrue(tc, any(Ct.caller == "nexrad_asr11_mag_rev1" & Ct.callee == "radar_mutual_gain_cdf_rev1"));
+A9 = readtable(fullfile(d, "asr9_assumptions_rev4.csv"), "TextType", "string");
+verifyEqual(tc, A9.value(A9.parameter == "ASR-9 peak gain"), 33.5);
 P = readtable(fullfile(d, "peaks_above_plateau_120h_rev4.csv"));
 verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end
