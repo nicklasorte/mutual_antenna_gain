@@ -20,6 +20,10 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Run the sensitivity sweep | `example_sensitivity_rev1` |
 | Find how long equal or multiple scan rates stay aligned | `example_asr11_drift_rev1` |
 | Make every figure and table in the report | `report_figures_rev4` (writes `docs/figures`) |
+| Build a gain table once per radar (all 74 VCP modes for the WSR-88D) | `T = gain_dist_table_rev1(ant, nexrad_mode_scans_rev1(), opts)` |
+| Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` |
+| Build both tables and run a worked pair and 1,000 random pairs | `example_mag_lookup_rev1` |
+| Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |
 
 Every model input is in `nexrad_asr11_mag_rev1` (`assumptions` and `citations`) or `nexrad_vcp_rev1`, with a source key and URL. Values without a public source are marked TODO.
 
@@ -29,6 +33,8 @@ Every model input is in `nexrad_asr11_mag_rev1` (`assumptions` and `citations`) 
 runtests(["test_radar_mutual_gain_cdf_rev1", "test_nexrad_asr11_rev1", ...
     "test_scripts_rev1", "test_validation_rev1"])
 ```
+
+Run `test_mag_lookup_rev1` for the two-step lookup (gain tables and pair CDFs).
 
 The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev4` end to end with small runs, writing to a temporary folder.
 
@@ -46,5 +52,6 @@ The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code c
 | `alignment_dwell_rev1.m` | Alignment of equal, multiple, or volume-locked scan rates |
 | `peak_label_rev1.m`, `merge_overrides_rev1.m` | Figure 5 labels; small-run overrides for the script tests |
 | `example_*.m`, `report_figures_rev4.m` | Entry points and report figures |
+| `gain_dist_table_rev1.m`, `mag_pair_cdf_rev1.m`, `nexrad_mode_scans_rev1.m` | Two-step MAG: exact gain distribution of each antenna by takeoff angle and scan mode (run once), then any pair's CDF by convolution, without a Monte Carlo run per pair |
 | `crosscheck_csharp_rev1.m` | Comparison with the C# reference code of the 2.7 GHz project |
 | `test_*.m` | Tests |
