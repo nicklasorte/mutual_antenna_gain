@@ -2,7 +2,7 @@
 
 MATLAB model of the mutual antenna gain (MAG, antenna coupling) between scanning radars in 2.7 GHz to 3.1 GHz, for the NTIA 2.7 GHz Retuning LOE. It follows the Rec. ITU-R M.2069-0 Annex 1 method and includes a worked example between a NOAA WSR-88D (NEXRAD) weather radar and an FAA ASR-11 airport surveillance radar, with the FAA ASR-9 as a second ATC radar.
 
-**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev4.md` (and `.docx`).
+**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev5.md` (and `.docx`).
 
 ## Requirements
 
@@ -19,7 +19,7 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Sweep every VCP mode and option combination (74 modes) | `example_nexrad_asr11_rev1` |
 | Run the sensitivity sweep | `example_sensitivity_rev1` |
 | Find how long equal or multiple scan rates stay aligned | `example_asr11_drift_rev1` |
-| Make every figure and table in the report | `report_figures_rev4` (writes `docs/figures`) |
+| Make every figure and table in the report | `report_figures_rev5` (writes `docs/figures`) |
 
 Every model input is in `nexrad_asr11_mag_rev1` (`assumptions` and `citations`) or `nexrad_vcp_rev1`, with a source key and URL. Values without a public source are marked TODO.
 
@@ -30,7 +30,7 @@ runtests(["test_radar_mutual_gain_cdf_rev1", "test_nexrad_asr11_rev1", ...
     "test_scripts_rev1", "test_validation_rev1"])
 ```
 
-The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev4` end to end with small runs, writing to a temporary folder.
+The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev5` end to end with small runs, writing to a temporary folder.
 
 ## Files
 
@@ -45,6 +45,6 @@ The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code c
 | `mag_sensitivity_rev1.m` | One-at-a-time sensitivity |
 | `alignment_dwell_rev1.m` | Alignment of equal, multiple, or volume-locked scan rates |
 | `peak_label_rev1.m`, `merge_overrides_rev1.m` | Figure 5 labels; small-run overrides for the script tests |
-| `example_*.m`, `report_figures_rev4.m` | Entry points and report figures |
+| `example_*.m`, `report_figures_rev5.m` | Entry points and report figures |
 | `crosscheck_csharp_rev1.m` | Comparison with the C# reference code of the 2.7 GHz project |
 | `test_*.m` | Tests |

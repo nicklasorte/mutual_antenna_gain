@@ -15,7 +15,7 @@
 %   (default 24) for both radars with the same seed, so the two runs share
 %   their random pointing and rotation-rate draws and differ only in the
 %   ATC radar antenna. This script doesn't clear the workspace, so
-%   report_figures_rev4 can call it.
+%   report_figures_rev5 can call it.
 %
 %   Defines:
 %     T9       one row per VCP mode: p99 to p99_999 (time-weighted MAG),
@@ -27,7 +27,7 @@
 %              the difference (ASR-9 minus ASR-11)
 %
 %   See also nexrad_asr11_mag_rev1, example_nexrad_asr11_rev1,
-%   vcp_mode_cases_rev1, report_figures_rev4.
+%   vcp_mode_cases_rev1, report_figures_rev5.
 
 if ~exist("asr9_base", "var")
     asr9_base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);
