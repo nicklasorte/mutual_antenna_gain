@@ -23,6 +23,14 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %                table's elevation grid.
 %   opts         struct, all fields optional:
 %     .pct          percentiles (default [50 90 99 99.9 99.99 99.999])
+%     .brg_tx_deg   for a sector-scanning transmitter: bearing of the
+%                   receiver measured clockwise from the center of the
+%                   transmitter's sector, deg (scalar or one per pair;
+%                   default 0, the path at the sector center, the worst
+%                   case for a sector aimed at the other station)
+%     .brg_rx_deg   the same for a sector-scanning receiver (default 0).
+%                   Full-rotation tables ignore both. Sector slices are
+%                   made for each pair with gain_slice_rev1 (exact).
 %     .tx_modes     T_tx mode names to include (default all)
 %     .rx_modes     T_rx mode names to include (default all)
 %     .per_mode     true also returns every mode pair's percentiles
@@ -86,7 +94,12 @@ end
 if abs(T_tx.bin_dB - T_rx.bin_dB) > 1e-12
     error("mag_pair:binMismatch", "T_tx and T_rx must use the same bin_dB (%g and %g).", T_tx.bin_dB, T_rx.bin_dB);
 end
-if opts.interp == "exact"
+n_pair = numel(el_tx_deg);
+brg_t = expand_brg(opts.brg_tx_deg, n_pair, "brg_tx_deg");
+brg_r = expand_brg(opts.brg_rx_deg, n_pair, "brg_rx_deg");
+is_sec_t = is_sector(T_tx);
+is_sec_r = is_sector(T_rx);
+if opts.interp == "exact" || is_sec_t || is_sec_r
     check_range(el_tx_deg, [-90; 90], "el_tx_deg", T_tx.name);
     check_range(el_rx_deg, [-90; 90], "el_rx_deg", T_rx.name);
 else
@@ -98,22 +111,16 @@ end
 mt = select_modes(T_tx, opts.tx_modes, "tx_modes");
 mr = select_modes(T_rx, opts.rx_modes, "rx_modes");
 check_sync(T_tx.mode_rates(mt), T_rx.mode_rates(mr));
-Wt = T_tx.W(mt, :);
-Wr = T_rx.W(mr, :);
-kt = find(any(Wt > 0, 1));
-kr = find(any(Wr > 0, 1));
-Wt = Wt(:, kt);
-Wr = Wr(:, kr);
-Wk = kron(Wr, Wt);                               % mode-pair weights on tilt pairs, row (n-1)*Mt + m
+kt = find(any(T_tx.W(mt, :) > 0, 1));
+kr = find(any(T_rx.W(mr, :) > 0, 1));
+sd_t = side(T_tx, kt, mt, false, opts.interp);
+sd_r = side(T_rx, kr, mr, true, opts.interp);
+Wk = kron(sd_r.Wc, sd_t.Wc);                     % mode-pair weights on slice-column pairs, row (n-1)*Mt + m
 [nm_t, nm_r] = ndgrid(T_tx.mode_names(mt), T_rx.mode_names(mr));
 mode_pairs = nm_t(:) + " | " + nm_r(:);
-
-sd_t = side(T_tx, kt, false, opts.interp);
-sd_r = side(T_rx, kr, true, opts.interp);
 dg = T_tx.bin_dB;
 
 % ---- Pairs
-n_pair = numel(el_tx_deg);
 n_pct = numel(opts.pct);
 n_mp = size(Wk, 1);
 pct_env = NaN(n_pair, n_pct);
@@ -125,12 +132,12 @@ o = opts;
 if opts.parallel_flag
     parfor ip = 1:n_pair
         [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(sd_t, el_tx_deg(ip), sd_r, el_rx_deg(ip), Wk, dg, o);
+            one_pair(sd_t, el_tx_deg(ip), brg_t(ip), sd_r, el_rx_deg(ip), brg_r(ip), Wk, dg, o);
     end
 else
     for ip = 1:n_pair
         [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(sd_t, el_tx_deg(ip), sd_r, el_rx_deg(ip), Wk, dg, o);
+            one_pair(sd_t, el_tx_deg(ip), brg_t(ip), sd_r, el_rx_deg(ip), brg_r(ip), Wk, dg, o);
     end
 end
 
@@ -157,9 +164,9 @@ R.notes = [
 end
 
 % =========================================================================
-function [q_env, worst, q_mode, max_path, curve] = one_pair(sd_t, et, sd_r, er, Wk, dg, opts)
-[pt, k0t, gt] = slices_at(sd_t, et, opts.interp);     % bins by tx tilts
-[pr, k0r, gr] = slices_at(sd_r, er, opts.interp);     % bins by rx tilts
+function [q_env, worst, q_mode, max_path, curve] = one_pair(sd_t, et, bt, sd_r, er, br, Wk, dg, opts)
+[pt, k0t, gt] = slices_at(sd_t, et, bt, opts.interp); % bins by tx slice columns
+[pr, k0r, gr] = slices_at(sd_r, er, br, opts.interp); % bins by rx slice columns
 k_off = k0t + k0r;                                    % conv bin c holds (k_off + c - 1)*bin_dB
 nt = size(pt, 2);
 nr = size(pr, 2);
@@ -197,9 +204,31 @@ end
 end
 
 % -------------------------------------------------------------------------
-function [p, k0, gmax] = slices_at(sd, el, how)
-% Distributions of every tilt at elevation el (bins by tilts, double), the
-% bin index k0 of row 1, and each tilt's largest gain toward the station.
+function [p, k0, gmax] = slices_at(sd, el, brg, how)
+% Distributions of every slice column at elevation el (bins by columns,
+% double), the bin index k0 of row 1, and each column's largest gain
+% toward the station. Columns are the tilts; for a sector with turnaround,
+% the tilts' uniform parts, then their edge parts. brg is the bearing of
+% the other station from the sector center (sector sides only).
+if sd.sector_deg < 360
+    n_tilt = numel(sd.tilt);
+    lim = [brg - sd.sector_deg/2, brg + sd.sector_deg/2];   % az_off = bearing - beam azimuth
+    hs = cell(n_tilt*(1 + sd.has_edge), 1);
+    for t = 1:n_tilt
+        hs{t} = gain_slice_rev1(sd.S, sd.tilt(t), el, lim);
+        if sd.has_edge
+            hs{n_tilt + t} = gain_slice_rev1(sd.S, sd.tilt(t), el, lim, 1);   % all time at the edges
+        end
+    end
+    gmax = cellfun(@(x) x.gmax, hs)';
+    k0 = min(cellfun(@(x) x.k_lo, hs));
+    n = max(cellfun(@(x) x.k_lo + numel(x.p), hs)) - k0;
+    p = zeros(n, numel(hs));
+    for t = 1:numel(hs)
+        p(hs{t}.k_lo - k0 + (1:numel(hs{t}.p)), t) = hs{t}.p;
+    end
+    return
+end
 if how == "exact"
     n_tilt = numel(sd.tilt);
     hs = cell(n_tilt, 1);
@@ -279,27 +308,59 @@ end
 end
 
 % -------------------------------------------------------------------------
-function sd = side(T, k, is_rx, how)
-% One end of the path: its stored slices, or a slice cache for "exact".
-sd = struct("grid", T.el_grid_deg, "k0", T.k0, "tilt", T.tilt_deg(k), "S", []);
-use_rx = is_rx && ~isempty(T.P_rx);
-if use_rx
-    sd.P = T.P_rx(:, :, k);
-    sd.G = T.gmax_rx(:, k);
-else
-    sd.P = T.P_tx(:, :, k);
-    sd.G = T.gmax_tx(:, k);
+function sd = side(T, k, m, is_rx, how)
+% One end of the path: its stored slices (full rotation), or a slice cache
+% for "exact" and for sectors; Wc holds the selected modes' weights on the
+% slice columns.
+sec = 360;
+if isfield(T, "sector")
+    sec = T.sector.sector_deg;
 end
-if how == "exact"
-    if ~isfield(T, "slice_opts")
-        error("mag_pair:oldTable", "Table %s predates exact slices; rebuild it with gain_dist_table_rev1.", T.name);
+sd = struct("grid", T.el_grid_deg, "k0", T.k0, "tilt", T.tilt_deg(k), "S", [], ...
+    "sector_deg", sec, "has_edge", false, "P", [], "G", []);
+W = T.W(m, k);
+sd.Wc = W;
+if sec < 360
+    We = T.W_edge(m, k);
+    sd.has_edge = any(We(:) > 0);
+    if sd.has_edge
+        sd.Wc = [W - We, We];                    % uniform parts, then edge parts
     end
-    ant = T.ant;
-    if use_rx
-        ant = T.ant_rx;
+end
+use_rx = is_rx && ~isempty(T.ant_rx);
+if sec >= 360 && how ~= "exact"
+    if is_rx && ~isempty(T.P_rx)
+        sd.P = T.P_rx(:, :, k);
+        sd.G = T.gmax_rx(:, k);
+    else
+        sd.P = T.P_tx(:, :, k);
+        sd.G = T.gmax_tx(:, k);
     end
-    sd.S = gain_slice_prep_rev1(ant, T.slice_opts);
-    sd.P = [];
+    return
+end
+if ~isfield(T, "slice_opts")
+    error("mag_pair:oldTable", "Table %s predates exact slices; rebuild it with gain_dist_table_rev1.", T.name);
+end
+ant = T.ant;
+if use_rx
+    ant = T.ant_rx;
+end
+sd.S = gain_slice_prep_rev1(ant, T.slice_opts);
+end
+
+% -------------------------------------------------------------------------
+function tf = is_sector(T)
+tf = isfield(T, "sector") && T.sector.sector_deg < 360;
+end
+
+% -------------------------------------------------------------------------
+function b = expand_brg(b, n, label)
+if isscalar(b)
+    b = b + zeros(n, 1);
+end
+b = b(:);
+if numel(b) ~= n || any(~isfinite(b))
+    error("mag_pair:badBearing", "opts.%s must be a scalar or one finite value per pair.", label);
 end
 end
 
@@ -370,7 +431,7 @@ end
 
 % -------------------------------------------------------------------------
 function opts = fill_opts(opts)
-d = struct("pct", [50 90 99 99.9 99.99 99.999], "tx_modes", strings(1, 0), ...
+d = struct("pct", [50 90 99 99.9 99.99 99.999], "brg_tx_deg", 0, "brg_rx_deg", 0, "tx_modes", strings(1, 0), ...
     "rx_modes", strings(1, 0), "per_mode", false, "return_curve", false, ...
     "interp", "quantile", "parallel_flag", 0);
 f = fieldnames(d);

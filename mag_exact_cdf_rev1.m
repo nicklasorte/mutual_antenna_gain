@@ -22,8 +22,9 @@ function out = mag_exact_cdf_rev1(sys1, sys2, opts)
 %   sys1, sys2  radar structs as for radar_mutual_gain_cdf_rev1: .tx
 %               (antenna), optional .rx (default .tx), .scan of type
 %               "mech_rotating" (rate_deg_s or rate_rpm, optional tilt_deg,
-%               n_rev, sector_deg, sector_center_deg). Arrays and beam
-%               steering are not supported (use the Monte Carlo engine).
+%               n_rev, sector_deg, sector_center_deg, sweep_mode,
+%               turnaround_s). Arrays and beam steering are not supported
+%               (use the Monte Carlo engine).
 %   opts        struct, all fields optional:
 %     .el12_deg   elevation of radar 2 seen from radar 1 (takeoff angle at
 %                 radar 1, deg; default 0)
@@ -112,7 +113,11 @@ end
 n = numel(sc.tilt_u);
 hs = cell(n, 1);
 for i = 1:n
-    hs{i} = gain_slice_rev1(S, sc.tilt_u(i), el, lim);
+    if isempty(lim)
+        hs{i} = gain_slice_rev1(S, sc.tilt_u(i), el);
+    else
+        hs{i} = gain_slice_rev1(S, sc.tilt_u(i), el, lim, sc.edge_u(i));
+    end
 end
 k0 = min(cellfun(@(h) h.k_lo, hs));
 nb = max(cellfun(@(h) h.k_lo + numel(h.p), hs)) - k0;
@@ -203,10 +208,19 @@ sec = field_or(scan, "sector_deg", 360);
 if ~isscalar(sec) || sec <= 0 || sec > 360
     error("mag_exact:badSector", "%s: sector_deg must be a scalar in (0, 360].", label);
 end
-w = n_rev(:)*sec./abs(rate);
+mode = string(field_or(scan, "sweep_mode", "restart"));
+turn = field_or(scan, "turnaround_s", 0);
+if ~ismember(mode, ["restart", "bidirectional"]) || (mode == "bidirectional" && sec >= 360) || ...
+        turn < 0 || (turn > 0 && mode ~= "bidirectional")
+    error("mag_exact:badSweep", "%s: sweep_mode must be ""restart"" or ""bidirectional"" (sector below 360), turnaround_s >= 0 only for bidirectional.", label);
+end
+w = n_rev(:).*(sec./abs(rate) + turn);           % step durations (radar_mutual_gain_cdf_rev1)
+w_edge = n_rev(:)*turn;                          % time parked at the edges per step
 % uniquetol: tilts from VCP tables can differ by round-off.
 [tilt_u, ~, iu] = uniquetol(tilt(:), 1e-6, "DataScale", 1);
-sc = struct("rate_deg_s", rate, "tilt_u", tilt_u, "w_u", accumarray(iu, w)/sum(w), ...
+w_u = accumarray(iu, w);
+sc = struct("rate_deg_s", rate, "tilt_u", tilt_u, "w_u", w_u/sum(w), ...
+    "edge_u", accumarray(iu, w_edge)./w_u, ...
     "sector_deg", sec, "sector_center_deg", field_or(scan, "sector_center_deg", 0));
 end
 

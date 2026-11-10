@@ -39,8 +39,11 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %               transmit and receive unless opts.ant_rx is given
 %   mode_scans  scan struct, or cell array of scan structs, one per scan
 %               mode (for example nexrad_mode_scans_rev1). Each scan must
-%               be "mech_rotating" over 360 deg (sector scans make the
-%               distribution depend on the bearing; not supported).
+%               be "mech_rotating". Sector scans (sector_deg < 360, with
+%               sweep_mode and turnaround_s) are allowed when every mode
+%               shares them: the slices then depend on the bearing to the
+%               other station, so the table stores no slices (P_tx empty)
+%               and mag_pair_cdf_rev1 makes them for each pair.
 %   opts        struct, all fields optional:
 %     .name          system name (default "radar")
 %     .mode_names    string array, one per scan (default "mode 1", ...)
@@ -67,6 +70,9 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %     .gmax_rx      same for receive ([] when ant_rx is absent)
 %     .W            M-by-K time weight of each tilt in each mode (rows sum
 %                   to 1)
+%     .W_edge       M-by-K part of W with the beam parked at a sector edge
+%                   (bidirectional sweeps with turnaround; else zeros)
+%     .sector       struct: sector_deg, sweep_mode, turnaround_s
 %     .mode_rates   1-by-M cell of each mode's per-step azimuth rates
 %                   (deg/s), for the synchronization check in
 %                   mag_pair_cdf_rev1
@@ -123,11 +129,21 @@ all_tilt = cell2mat(cellfun(@(s) s.tilt_deg, steps, "UniformOutput", false)');
 tilt = uniquetol(all_tilt, 1e-6, "DataScale", 1);
 n_tilt = numel(tilt);
 W = zeros(n_mode, n_tilt);
+W_edge = zeros(n_mode, n_tilt);
 for m = 1:n_mode
     [~, it] = ismembertol(steps{m}.tilt_deg, tilt, 1e-6, "DataScale", 1);
-    W(m, :) = accumarray(it(:), steps{m}.dur_s(:), [n_tilt 1])';
-    W(m, :) = W(m, :)/sum(W(m, :));
+    tot = sum(steps{m}.dur_s);
+    W(m, :) = accumarray(it(:), steps{m}.dur_s(:), [n_tilt 1])'/tot;
+    W_edge(m, :) = accumarray(it(:), steps{m}.edge_s(:), [n_tilt 1])'/tot;
 end
+% One sector geometry per table: the slices of every mode share it.
+sec_all = cellfun(@(x) x.sector_deg, steps);
+mode_all = string(cellfun(@(x) x.sweep_mode, steps, "UniformOutput", false));
+turn_all = cellfun(@(x) x.turnaround_s, steps);
+if any(sec_all ~= sec_all(1)) || any(mode_all ~= mode_all(1)) || any(turn_all ~= turn_all(1))
+    error("gain_dist:mixedSectors", "Every scan mode in one table must share sector_deg, sweep_mode and turnaround_s.");
+end
+sector = struct("sector_deg", sec_all(1), "sweep_mode", mode_all(1), "turnaround_s", turn_all(1));
 
 % ---- Antennas (gain_slice_prep_rev1 picks the exact method per pattern)
 slice_opts = struct("bin_dB", opts.bin_dB, "az_step_deg", opts.az_step_deg, "method", opts.slice_method);
@@ -140,9 +156,14 @@ if has_rx
     check_antenna(S_rx.pa, "opts.ant_rx");
 end
 
-% ---- Gain histograms
+% ---- Gain histograms (full rotation only: a sector's slices depend on
+%      the bearing to the other station, so mag_pair_cdf_rev1 makes them
+%      for each pair)
 el = opts.el_grid_deg(:);
 n_el = numel(el);
+if sector.sector_deg < 360
+    n_el = 0;
+end
 [H_tx, H_rx] = deal(cell(n_el, 1));
 [gmax_tx, gmax_rx] = deal(NaN(n_el, n_tilt));
 if opts.parallel_flag
@@ -164,15 +185,19 @@ H = H_tx;
 if has_rx
     H = [H_tx; H_rx];
 end
-k_lo = min(cellfun(@(h) h.k_lo, H));
-k_hi = max(cellfun(@(h) h.k_lo + size(h.p, 1) - 1, H));
-n_bin = k_hi - k_lo + 1;
-P_tx = stack(H_tx, k_lo, n_bin, n_tilt);
-P_rx = [];
-if has_rx
-    P_rx = stack(H_rx, k_lo, n_bin, n_tilt);
+if n_el > 0
+    k_lo = min(cellfun(@(h) h.k_lo, H));
+    k_hi = max(cellfun(@(h) h.k_lo + size(h.p, 1) - 1, H));
+    n_bin = k_hi - k_lo + 1;
+    P_tx = stack(H_tx, k_lo, n_bin, n_tilt);
+    P_rx = [];
+    if has_rx
+        P_rx = stack(H_rx, k_lo, n_bin, n_tilt);
+    else
+        gmax_rx = [];
+    end
 else
-    gmax_rx = [];
+    [k_lo, P_tx, P_rx, gmax_tx, gmax_rx] = deal(0, [], [], [], []);
 end
 
 T = struct();
@@ -191,6 +216,8 @@ T.P_rx = P_rx;
 T.gmax_tx = gmax_tx;
 T.gmax_rx = gmax_rx;
 T.W = W;
+T.W_edge = W_edge;
+T.sector = sector;
 T.mode_rates = mode_rates;
 T.ant = ant;
 T.ant_rx = opts.ant_rx;
@@ -258,13 +285,23 @@ if isscalar(n_rev), n_rev = n_rev + zeros(n, 1); end
 if numel(tilt) ~= n || numel(n_rev) ~= n
     error("gain_dist:badSteps", "%s: tilt_deg and n_rev must have one value per rate step.", name);
 end
-if field_or(scan, "sector_deg", 360) < 360
-    error("gain_dist:sector", "%s: sector scans are not supported (the distribution depends on the bearing).", name);
-end
 if string(field_or(scan, "beam_mode", "none")) ~= "none"
     error("gain_dist:steering", "%s: electronic beam steering is not supported.", name);
 end
-s = struct("tilt_deg", tilt(:), "dur_s", n_rev(:)*360./abs(rates));
+sec = field_or(scan, "sector_deg", 360);
+mode = string(field_or(scan, "sweep_mode", "restart"));
+turn = field_or(scan, "turnaround_s", 0);
+if ~isscalar(sec) || sec <= 0 || sec > 360
+    error("gain_dist:badSector", "%s: sector_deg must be a scalar in (0, 360].", name);
+end
+if ~ismember(mode, ["restart", "bidirectional"]) || (mode == "bidirectional" && sec >= 360) || ...
+        turn < 0 || (turn > 0 && mode ~= "bidirectional")
+    error("gain_dist:badSweep", "%s: sweep_mode must be ""restart"" or ""bidirectional"" (sector below 360), turnaround_s >= 0 only for bidirectional.", name);
+end
+% Step durations and time parked at the edges (radar_mutual_gain_cdf_rev1
+% step_durations, sector_sweep_rev1).
+s = struct("tilt_deg", tilt(:), "dur_s", n_rev(:).*(sec./abs(rates) + turn), ...
+    "edge_s", n_rev(:)*turn, "sector_deg", sec, "sweep_mode", mode, "turnaround_s", turn);
 end
 
 % -------------------------------------------------------------------------

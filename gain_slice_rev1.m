@@ -1,4 +1,4 @@
-function h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg)
+function h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg, edge_frac)
 %GAIN_SLICE_REV1 Exact time-weighted gain distribution at one tilt and elevation.
 %   h = gain_slice_rev1(S, tilt_deg, el_deg) returns the distribution of the
 %   gain of a mechanically rotating antenna (prepared by
@@ -13,11 +13,18 @@ function h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg)
 %   the offset antenna_gain_rev1 uses, with 0 < hi - lo <= 360. Time is
 %   uniform across the interval (constant sweep rate, no turnaround).
 %
+%   h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg, edge_frac) also
+%   puts edge_frac of the time at the two ends of the interval, half at
+%   each (a bidirectional sweep that dwells at each edge, sector_sweep_rev1);
+%   the rest stays uniform across the interval.
+%
 %   S          struct from gain_slice_prep_rev1
 %   tilt_deg   beam elevation (deg), scalar
 %   el_deg     elevation of the other station above the local horizontal
 %              (takeoff angle, deg), scalar
 %   az_lim_deg optional [lo hi] (default full rotation)
+%   edge_frac  optional share of time at the interval ends, 0 to 1
+%              (default 0; needs az_lim_deg)
 %
 %   h struct:
 %     .k_lo   integer index of the first bin: bin b holds gain
@@ -38,6 +45,10 @@ arguments
     tilt_deg (1, 1) double {mustBeReal, mustBeFinite}
     el_deg (1, 1) double {mustBeReal, mustBeFinite}
     az_lim_deg double = []
+    edge_frac (1, 1) double {mustBeInRange(edge_frac, 0, 1)} = 0
+end
+if edge_frac > 0 && isempty(az_lim_deg)
+    error("gain_slice:edgeNeedsLim", "edge_frac needs a sector (az_lim_deg).");
 end
 full = isempty(az_lim_deg);
 if ~full
@@ -68,6 +79,24 @@ switch S.method
     otherwise
         error("gain_slice:badMethod", "Unknown method ""%s"" in S.", S.method);
 end
+if edge_frac > 0
+    h = add_edges(S, h, tilt_deg, el_deg, az_lim_deg, edge_frac, dg);
+end
+end
+
+% =========================================================================
+function h = add_edges(S, h, tilt, el, lim, f, dg)
+% Mix in point masses f/2 at each end of the interval (beam parked there).
+a = lim(:);
+z = zeros(2, 1);
+g = antenna_gain_rev1(S.pa, 0, el, struct("mech_az", -a, "tilt", z + tilt, "steer_az", z, "steer_el", z));
+k = ceil(g/dg - 1e-9);
+k_lo = min([h.k_lo; k]);
+n = max([h.k_lo + numel(h.p) - 1; k]) - k_lo + 1;
+p = zeros(n, 1);
+p(h.k_lo - k_lo + (1:numel(h.p))) = (1 - f)*h.p;
+p = p + accumarray(k - k_lo + 1, f/2, [n 1]);
+h = struct("k_lo", k_lo, "p", p, "gmax", max([h.gmax; g]));
 end
 
 % =========================================================================

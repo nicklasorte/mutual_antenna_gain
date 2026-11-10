@@ -55,12 +55,26 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       percentiles conservative by at most 0.1 dB;
 %                       out.cdf.g12_dBi and g21_dBi are empty and
 %                       out.cdf.dist21 holds the distribution)
-%     .nexrad_sector_deg  NEXRAD azimuth sector, centered on the ASR-11
-%                       (360: full rotation, the operational VCPs). Below
-%                       360, each cut sweeps the sector once: a bounding
-%                       case for a scan aimed at the ATC radar (2.7 GHz
-%                       Retuning LOE meeting, November 4, 2026). No
-%                       operational sector width is known (TODO).
+%     .nexrad_sector_deg  NEXRAD azimuth sector (360: full rotation, the
+%                       operational VCPs). Below 360, each cut sweeps the
+%                       sector once: a bounding case for a scan aimed at
+%                       the ATC radar (2.7 GHz Retuning LOE meeting,
+%                       November 4, 2026). No operational sector width is
+%                       known (TODO).
+%     .nexrad_sector_center_deg  sector center, deg clockwise from the
+%                       bearing to the ATC radar (default 0: centered on
+%                       it, the worst case)
+%     .nexrad_sweep_mode  "restart" (default) | "bidirectional"
+%                       (sector_sweep_rev1; no operational sweep law is
+%                       known, TODO)
+%     .nexrad_turnaround_s  bidirectional only: dwell at each sector edge
+%                       per pass (default 0)
+%     .atc_sector_deg   ATC radar azimuth sector (360: full rotation, the
+%                       operational case). Below 360, a restart sweep;
+%                       each sweep is one row of scan_max.asr_rev. Needs
+%                       asr_jitter_mode "per_trial".
+%     .atc_sector_center_deg  ATC sector center, deg clockwise from the
+%                       bearing to the NEXRAD (default 0)
 %     .nexrad_back_dB   NEXRAD gain below peak at 90 to 180 deg off axis
 %                       (default -55, the NSSL_1998 far level held to 180
 %                       deg; no measured back lobe, TODO). nssl_measured only.
@@ -489,8 +503,11 @@ switch opts.nexrad_scan
         scan_n = struct("type", "mech_rotating", "rate_rpm", A.nex.paper_rate_rpm, ...
             "tilt_deg", A.nex.paper_tilt_deg);
 end
-scan_n.sector_deg = opts.nexrad_sector_deg;     % centered on the ATC radar (azimuth 0)
-scan_n.sector_center_deg = 0;
+scan_n.sector_deg = opts.nexrad_sector_deg;
+% Sector center: bearing from the direction to the ATC radar (azimuth 0).
+scan_n.sector_center_deg = opts.nexrad_sector_center_deg;
+scan_n.sweep_mode = opts.nexrad_sweep_mode;
+scan_n.turnaround_s = opts.nexrad_turnaround_s;
 sys_n = struct("name", "WSR-88D", "tx", ant_n, "rx", ant_n, "scan", scan_n);
 % First-sidelobe level that ends the main-beam region (lobe_pairs).
 sys_n.region_sll_dB = struct("nssl_measured", A.nex.nssl_env_dB(1), "roc_spec", A.nex.roc_env_dB(1), ...
@@ -524,6 +541,12 @@ if opts.asr_pattern == "m1851_csc2" && opts.asr_tilt_deg + A.asr.el_bw_deg/2 <= 
 end
 scan_a = struct("type", "mech_rotating", "rate_rpm", A.asr.rate_rpm, "tilt_deg", opts.asr_tilt_deg, ...
     "rate_jitter_deg_s", opts.asr_rate_jitter_deg_s, "jitter_mode", opts.asr_jitter_mode);
+if opts.atc_sector_deg < 360
+    % The NEXRAD is at azimuth 180 from the ATC radar; the center is a
+    % bearing from that direction. Restart sweep (sector_sweep_rev1).
+    scan_a.sector_deg = opts.atc_sector_deg;
+    scan_a.sector_center_deg = mod(180 + opts.atc_sector_center_deg, 360);
+end
 sys_a = struct("name", A.asr.name, "tx", ant_a, "rx", ant_a, "scan", scan_a);
 sys_a.region_sll_dB = struct("m1851_csc2", A.asr.az_sll_dB, "f1245", NaN).(opts.asr_pattern);
 end
@@ -551,7 +574,8 @@ pn = struct("tx", antenna_prepare_rev1(sys_n.tx), "rx", antenna_prepare_rev1(sys
 pa = struct("tx", antenna_prepare_rev1(sys_a.tx), "rx", antenna_prepare_rev1(sys_a.rx));
 [rate_n, el_n] = nexrad_cuts(sys_n.scan);
 sec = opts.nexrad_sector_deg;
-dur_n = sec./rate_n;                            % one revolution or one sector sweep per cut
+turn = opts.nexrad_turnaround_s;
+dur_n = sec./rate_n + turn;                     % one revolution or one sector pass per cut
 E = region_edges(setfield(pn.rx, "region_sll_dB", sys_n.region_sll_dB), ...
     setfield(pa.tx, "region_sll_dB", sys_a.region_sll_dB), opts);
 lobe_n = zeros(4, 4);                           % time-series sample counts per region pair
@@ -559,7 +583,8 @@ lobe_m = -Inf(4, 4);                            % largest MAG per region pair
 t_vol = sum(dur_n);
 cut_start = [0; cumsum(dur_n(1:end-1))];
 rate_a = 6*sys_a.scan.rate_rpm;
-t_rev = 360/rate_a;
+sec_a = opts.atc_sector_deg;
+t_rev = sec_a/rate_a;                           % one revolution or one sector sweep
 
 t = (0:opts.dt_s:opts.duration_s)';
 n_t = numel(t);
@@ -584,9 +609,11 @@ for jj = 1:opts.n_trials
     cut = discretize(w, [cut_start; t_vol]);
     cut(isnan(cut)) = numel(dur_n);
     if sec < 360
-        % Sector centered on the ASR-11 (azimuth 0), swept once per cut.
-        u = mod(az0_n/360*sec + rate_n(cut).*(w - cut_start(cut)), sec);
-        st_n = state(mod(u - sec/2, 360), el_n(cut));
+        % Sector around opts.nexrad_sector_center_deg (from the ATC radar
+        % bearing), one pass per cut, shared sweep law.
+        u = sector_sweep_rev1(w - cut_start(cut), rate_n(cut), sec, az0_n/360*sec, ...
+            opts.nexrad_sweep_mode, turn);
+        st_n = state(mod(opts.nexrad_sector_center_deg + u - sec/2, 360), el_n(cut));
     else
         st_n = state(mod(az0_n + rate_n(cut).*(w - cut_start(cut)), 360), el_n(cut));
     end
@@ -599,8 +626,17 @@ for jj = 1:opts.n_trials
     switch sys_a.scan.jitter_mode
         case "per_trial"
             r = rate_a + jit*(2*rand(rs) - 1);
-            ang = az0_a + r*t;
-            rev = floor(ang/360) + 1;
+            if sec_a < 360
+                % Sector: distance swept since the first sweep's leading
+                % edge; each sweep is one "revolution" row.
+                sw = az0_a/360*sec_a + r*t;
+                rev = floor(sw/sec_a) + 1;
+                u_a = sector_sweep_rev1(sw - (rev - 1)*sec_a, 1, sec_a);
+                ang = mod(sys_a.scan.sector_center_deg + u_a - sec_a/2, 360);
+            else
+                ang = az0_a + r*t;
+                rev = floor(ang/360) + 1;
+            end
             r_rev = r + zeros(max(rev), 1);
         case "per_rev"
             n_rev = ceil((az0_a + (rate_a + jit)*opts.duration_s)/360) + 1;
@@ -811,20 +847,48 @@ pa = antenna_prepare_rev1(sys_a.tx);
 E = S.region_edges;
 e = opts.el_nexrad_deg;
 [rate_n, el_n] = nexrad_cuts(sys_n.scan);
-w = (1./rate_n)/sum(1./rate_n);                 % cut time weights (sector cancels)
 sec = opts.nexrad_sector_deg;
+turn = opts.nexrad_turnaround_s;
+if turn > 0
+    % Bidirectional sweep: each cut spends sec/rate sweeping and turn
+    % parked at the two edges (sector_sweep_rev1).
+    w_all = (sec./rate_n + turn)/sum(sec./rate_n + turn);
+    f_edge = turn./(sec./rate_n + turn);
+else
+    w_all = (1./rate_n)/sum(1./rate_n);          % cut time weights (sector cancels)
+    f_edge = zeros(size(rate_n));
+end
+c_n = opts.nexrad_sector_center_deg;
 dz = 0.002;
-daz = (-sec/2 + dz/2:dz:sec/2)';                % NEXRAD azimuth off the path
+xg = (-sec/2 + dz/2:dz:sec/2)';                 % beam position in the sector from its center
+mech = c_n - xg;                                % NEXRAD beam azimuth (0 = toward the ATC radar)
+daz = wrapTo180(0 - mech);                      % ATC bearing off the NEXRAD beam
+mech_e = c_n + [-sec/2; sec/2];                 % sector edges (turnaround dwell)
+daz_e = wrapTo180(0 - mech_e);
 pN = zeros(4, 1);
 mN = -Inf(4, 1);
 [el_u, ~, iu] = unique(el_n);
 for i = 1:numel(el_u)
-    gN = antenna_gain_rev1(pn, 0, e, state(-daz, el_u(i) + 0*daz));
+    wi = sum(w_all(iu == i));
+    fe = sum(w_all(iu == i).*f_edge(iu == i))/wi;    % share of this tilt's time at the edges
+    gN = antenna_gain_rev1(pn, 0, e, state(mech, el_u(i) + 0*mech));
     r = region_of(offaxis_nexrad(daz, el_u(i), e), E.nexrad);
-    pN = pN + sum(w(iu == i))*accumarray(r, 1, [4 1])/numel(daz);
+    pN = pN + wi*(1 - fe)*accumarray(r, 1, [4 1])/numel(daz);
     mN = max(mN, accumarray(r, gN, [4 1], @max, -Inf));
+    if fe > 0
+        gE = antenna_gain_rev1(pn, 0, e, state(mech_e, el_u(i) + 0*mech_e));
+        rE = region_of(offaxis_nexrad(daz_e, el_u(i), e), E.nexrad);
+        pN = pN + wi*fe*accumarray(rE, 0.5, [4 1]);
+        mN = max(mN, accumarray(rE, gE, [4 1], @max, -Inf));
+    end
 end
-dA = (-180 + dz/2:dz:180)';                     % ASR-11 azimuth off the path
+sec_a = opts.atc_sector_deg;
+if sec_a < 360
+    % ATC sector around the NEXRAD bearing + atc_sector_center_deg.
+    dA = wrapTo180(-opts.atc_sector_center_deg + (-sec_a/2 + dz/2:dz:sec_a/2)');
+else
+    dA = (-180 + dz/2:dz:180)';                 % ASR-11 azimuth off the path
+end
 gA = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - dA, sys_a.scan.tilt_deg + 0*dA));
 rA = region_of(abs(dA), E.asr11);
 pA = accumarray(rA, 1, [4 1])/numel(dA);
@@ -927,7 +991,8 @@ d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_d
     "cd_rate_deg_s", [], "nexrad_pattern", "nssl_measured", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
     "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
-    "nexrad_sector_deg", 360, "nexrad_back_dB", -55, ...
+    "nexrad_sector_deg", 360, "nexrad_sector_center_deg", 0, "nexrad_sweep_mode", "restart", ...
+    "nexrad_turnaround_s", 0, "atc_sector_deg", 360, "atc_sector_center_deg", 0, "nexrad_back_dB", -55, ...
     "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
@@ -972,6 +1037,20 @@ if opts.asr_rate_jitter_deg_s < 0 || opts.asr_rate_jitter_deg_s >= 75
 end
 if ~isscalar(opts.nexrad_sector_deg) || opts.nexrad_sector_deg <= 0 || opts.nexrad_sector_deg > 360
     error("radar_coupling:badSector", "opts.nexrad_sector_deg must be a scalar in (0, 360].");
+end
+if ~isscalar(opts.atc_sector_deg) || opts.atc_sector_deg <= 0 || opts.atc_sector_deg > 360
+    error("radar_coupling:badSector", "opts.atc_sector_deg must be a scalar in (0, 360].");
+end
+if opts.atc_sector_deg < 360 && opts.asr_jitter_mode == "per_rev"
+    error("radar_coupling:sectorJitter", "An ATC sector needs asr_jitter_mode ""per_trial"".");
+end
+opts.nexrad_sweep_mode = string(opts.nexrad_sweep_mode);
+if ~ismember(opts.nexrad_sweep_mode, ["restart", "bidirectional"]) || ...
+        (opts.nexrad_sweep_mode == "bidirectional" && opts.nexrad_sector_deg >= 360)
+    error("radar_coupling:badSweepMode", "opts.nexrad_sweep_mode must be ""restart"", or ""bidirectional"" with a sector below 360 deg.");
+end
+if opts.nexrad_turnaround_s < 0 || (opts.nexrad_turnaround_s > 0 && opts.nexrad_sweep_mode ~= "bidirectional")
+    error("radar_coupling:badTurnaround", "opts.nexrad_turnaround_s must be >= 0, and nonzero only for a bidirectional sweep.");
 end
 if opts.nexrad_back_dB ~= -55 && opts.nexrad_pattern ~= "nssl_measured"
     error("radar_coupling:backNeedsNssl", "opts.nexrad_back_dB applies to nexrad_pattern ""nssl_measured"" only.");

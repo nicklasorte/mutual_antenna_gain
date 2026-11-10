@@ -63,6 +63,15 @@ function out = radar_mutual_gain_cdf_rev1(sys1, sys2, opts)
 %                     step lasts n_rev*sector_deg/|rate|. Elevation-step
 %                     time shares are unchanged by the sector.
 %        .sector_center_deg  sector center azimuth (default 0)
+%        .sweep_mode  "restart" (default: sweep, then jump back to the
+%                     leading edge) | "bidirectional" (sweep forward and
+%                     back; sector below 360 only). Shared sweep law:
+%                     sector_sweep_rev1.
+%        .turnaround_s  bidirectional only: dwell at each edge per pass
+%                     (default 0); a step then lasts n_rev*(sector_deg/
+%                     |rate| + turnaround_s), and in random mode each edge
+%                     holds turnaround_s/(2*(sector/rate + turnaround_s))
+%                     of the step's time
 %        .rate_jitter_deg_s  time_series only: each trial offsets the rate
 %                     by U(-j, +j) deg/s (default 0). M.2069-0 Annex 1
 %                     quotes a +/-0.5 deg/s drive accuracy.
@@ -263,12 +272,23 @@ z = zeros(n, 1);
 st = struct("mech_az", z, "tilt", z, "steer_az", z, "steer_el", z);
 switch scan.type
     case "mech_rotating"
-        st.mech_az = sector_az(scan, scan.sector_deg*rand(rs, n, 1));
+        u = scan.sector_deg*rand(rs, n, 1);
+        st.mech_az = sector_az(scan, u);
         w = scan.step_dur_s/sum(scan.step_dur_s);    % time fraction per step
         if numel(w) > 1
             step = discretize(rand(rs, n, 1), [0; cumsum(w(:))]);
         else
             step = ones(n, 1);
+        end
+        if scan.sweep_mode == "bidirectional" && scan.turnaround_s > 0
+            % Each edge holds turnaround/(2*(sector/rate + turnaround)) of
+            % the time in each step (sector_sweep_rev1).
+            r = abs(scan.rate_deg_s(step));
+            f = scan.turnaround_s./(scan.sector_deg./r + scan.turnaround_s);
+            at_edge = rand(rs, n, 1) < f;
+            far = rand(rs, n, 1) < 0.5;
+            u(at_edge) = scan.sector_deg*far(at_edge);
+            st.mech_az = sector_az(scan, u);
         end
         st.tilt = scan.tilt_deg(step);
         st.tilt = st.tilt(:);
@@ -359,7 +379,7 @@ switch scan.type
             % +/- jitter (M.2069-0 Annex 1 cites +/-0.5 deg/s accuracy).
             dr = scan.rate_jitter_deg_s*(2*rand(rs) - 1);
             scan.rate_deg_s = sign(scan.rate_deg_s).*(abs(scan.rate_deg_s) + dr);
-            scan.step_dur_s = scan.n_rev*scan.sector_deg./abs(scan.rate_deg_s);
+            scan.step_dur_s = step_durations(scan);
         end
         t_cycle = sum(scan.step_dur_s);
         t0 = t_cycle*rand(rs);
@@ -368,7 +388,13 @@ switch scan.type
         step = discretize(tau, edges);
         step(isnan(step)) = numel(scan.step_dur_s);   % tau == t_cycle edge
         % Integer revolutions per step: azimuth restarts each step mod 360.
-        if scan.sector_deg < 360
+        if scan.sector_deg < 360 && scan.sweep_mode == "bidirectional"
+            % Sector swept forward and back, with a dwell at each edge
+            % (sector_sweep_rev1, the shared sweep law).
+            u = sector_sweep_rev1(tau - edges(step), scan.rate_deg_s(step), scan.sector_deg, ...
+                az0/360*scan.sector_deg, "bidirectional", scan.turnaround_s);
+            st.mech_az = sector_az(scan, u, sign(scan.rate_deg_s(step)));
+        elseif scan.sector_deg < 360
             % Sector: position within the sweep, from the leading edge.
             u = mod(az0/360*scan.sector_deg + abs(scan.rate_deg_s(step)).*(tau - edges(step)), scan.sector_deg);
             st.mech_az = sector_az(scan, u, sign(scan.rate_deg_s(step)));
@@ -534,7 +560,19 @@ switch scan.type
         if ~isscalar(scan.sector_deg) || scan.sector_deg <= 0 || scan.sector_deg > 360
             error("radar_coupling:badSector", "%s: sector_deg must be a scalar in (0, 360].", label);
         end
-        scan.step_dur_s = scan.n_rev*scan.sector_deg./abs(scan.rate_deg_s);
+        scan.sweep_mode = string(field_or(scan, "sweep_mode", "restart"));
+        scan.turnaround_s = field_or(scan, "turnaround_s", 0);
+        if ~ismember(scan.sweep_mode, ["restart", "bidirectional"])
+            error("radar_coupling:badSweepMode", "%s: sweep_mode must be ""restart"" or ""bidirectional"".", label);
+        end
+        if scan.sweep_mode == "bidirectional" && scan.sector_deg >= 360
+            error("radar_coupling:badSweepMode", "%s: a bidirectional sweep needs sector_deg below 360.", label);
+        end
+        if ~isscalar(scan.turnaround_s) || scan.turnaround_s < 0 || ...
+                (scan.turnaround_s > 0 && scan.sweep_mode ~= "bidirectional")
+            error("radar_coupling:badTurnaround", "%s: turnaround_s must be >= 0, and nonzero only for a bidirectional sweep.", label);
+        end
+        scan.step_dur_s = step_durations(scan);
         scan.rate_jitter_deg_s = field_or(scan, "rate_jitter_deg_s", 0);
         if scan.rate_jitter_deg_s < 0 || scan.rate_jitter_deg_s >= min(abs(scan.rate_deg_s))
             error("radar_coupling:badJitter", "%s: rate_jitter_deg_s must be >= 0 and below the slowest rate.", label);
@@ -678,6 +716,17 @@ if scan.sector_deg >= 360
     az = mod(u, 360);
 else
     az = mod(scan.sector_center_deg + sgn.*(u - scan.sector_deg/2), 360);
+end
+end
+
+% -------------------------------------------------------------------------
+function d = step_durations(scan)
+% Duration of each elevation step: n_rev passes of the sector at |rate|,
+% plus a turnaround dwell per pass for a bidirectional sweep.
+if scan.sweep_mode == "restart"
+    d = scan.n_rev*scan.sector_deg./abs(scan.rate_deg_s);   % rev 1 arithmetic, bit for bit
+else
+    d = scan.n_rev.*(scan.sector_deg./abs(scan.rate_deg_s) + scan.turnaround_s);
 end
 end
 

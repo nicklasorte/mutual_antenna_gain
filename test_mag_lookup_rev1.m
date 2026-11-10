@@ -116,9 +116,11 @@ verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("bogus", 1)), "ma
 Tb = d.Tn;
 Tb.bin_dB = 0.1;
 verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, Tb, 0, 0), "mag_pair:binMismatch");
+% Sector scans are allowed (plan step 5), but every mode of one table must
+% share the sector geometry.
 s = d.sys_a.scan;
 s.sector_deg = 90;
-verifyError(tc, @() gain_dist_table_rev1(d.sys_a.tx, s), "gain_dist:sector");
+verifyError(tc, @() gain_dist_table_rev1(d.sys_a.tx, {d.sys_a.scan, s}), "gain_dist:mixedSectors");
 verifyError(tc, @() gain_dist_table_rev1(d.sys_a.tx, d.sys_a.scan, struct("bogus", 1)), "gain_dist:unknownOption");
 end
 
