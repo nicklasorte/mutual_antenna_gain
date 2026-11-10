@@ -115,6 +115,9 @@ if abs(T_tx.bin_dB - T_rx.bin_dB) > 1e-12
     error("mag_pair:binMismatch", "T_tx and T_rx must use the same bin_dB (%g and %g).", T_tx.bin_dB, T_rx.bin_dB);
 end
 n_pair = numel(el_tx_deg);
+if n_pair == 0
+    error("mag_pair:noPairs", "el_tx_deg and el_rx_deg are empty: give at least one pair.");
+end
 brg_t = expand_brg(opts.brg_tx_deg, n_pair, "brg_tx_deg");
 brg_r = expand_brg(opts.brg_rx_deg, n_pair, "brg_rx_deg");
 is_sec_t = is_sector(T_tx);
@@ -595,6 +598,9 @@ end
 % -------------------------------------------------------------------------
 function [i, a] = bracket(grid, el)
 % Grid interval [grid(i), grid(i+1)] that holds el, and the fraction a.
+% check_range lets angles 1e-12 past the grid ends through; clamp them so
+% discretize sees the same range (review R6).
+el = min(max(el, grid(1)), grid(end));
 i = discretize(el, grid);
 if isnan(i)
     error("mag_pair:outOfGrid", "Elevation %g deg is outside the table grid.", el);
@@ -688,5 +694,8 @@ if ~isscalar(opts.el_round_deg) || opts.el_round_deg < 0
 end
 if any(opts.pct < 0 | opts.pct >= 100)
     error("mag_pair:badPct", "opts.pct values must lie in [0, 100).");
+end
+if numel(unique(opts.pct)) < numel(opts.pct)
+    error("mag_pair:duplicatePct", "opts.pct has repeated values: list each percentile once.");
 end
 end

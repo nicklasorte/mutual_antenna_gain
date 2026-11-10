@@ -158,6 +158,13 @@ Tb.bin_dB = 0.1;
 verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, Tb, 0, 0), "mag_pair:binMismatch");
 verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("conv_method", "bogus")), "mag_pair:badConv");
 verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("el_round_deg", -1)), "mag_pair:badRound");
+% Review R6: clear errors for repeated percentiles and an empty pair list;
+% an angle within the 1e-12 tolerance past the grid edge runs.
+verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("pct", [99 99])), "mag_pair:duplicatePct");
+verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, zeros(0, 1), zeros(0, 1)), "mag_pair:noPairs");
+g = d.Tn.el_grid_deg(end);
+R = mag_pair_cdf_rev1(d.Ta, d.Tn, 0, g + 1e-13);
+verifyEqual(tc, R.pct{1, 3:end}, mag_pair_cdf_rev1(d.Ta, d.Tn, 0, g).pct{1, 3:end});
 % Sector scans are allowed (plan step 5), but every mode of one table must
 % share the sector geometry.
 s = d.sys_a.scan;
