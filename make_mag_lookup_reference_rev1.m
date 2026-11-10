@@ -12,7 +12,7 @@
 out_csv = fullfile(fileparts(which("make_mag_lookup_reference_rev1")), "test_data", ...
     "mag_lookup_reference_rev1.csv");
 if ~isfolder(fileparts(out_csv)), mkdir(fileparts(out_csv)); end
-o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured"));
 [scans, names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
 grid = -1:0.05:3;
 Tn = gain_dist_table_rev1(o.sys_nexrad.tx, scans, struct("name", "WSR-88D", ...

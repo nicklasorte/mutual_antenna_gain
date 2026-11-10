@@ -30,7 +30,8 @@
 %   vcp_mode_cases_rev1, report_figures_rev5.
 
 if ~exist("asr9_base", "var")
-    asr9_base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);
+    asr9_base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4, "nexrad_pattern", "nssl_measured", ...
+        "asr_remote_sl_dBi", 3.5);   % Rev 5 used the measured pattern and +3.5 dBi
 end
 asr9_detail_trials = 24;
 if exist("example_overrides", "var")

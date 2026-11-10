@@ -13,7 +13,7 @@
 
 clearvars -except example_overrides; close all;   % example_overrides: small runs (tests)
 
-base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);   % M.2069-0: 5e6 samples
+base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4, "nexrad_pattern", "nssl_measured");   % Rev 5 used the measured pattern   % M.2069-0: 5e6 samples
 if exist("example_overrides", "var")
     base = merge_overrides_rev1(base, example_overrides);
 end

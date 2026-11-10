@@ -32,7 +32,12 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .low_el_mode      VCP options, see nexrad_vcp_rev1 (0, 0, Inf, [],
 %                       [], "add"); low_el_deg is the site's supplemental
 %                       cut below 0.5 deg
-%     .nexrad_pattern   "nssl_measured" (default) | "roc_spec" | "f1245"
+%     .nexrad_pattern   "roc_spec" (default: the ROC specification sidelobe
+%                       envelope, the protection baseline since red team
+%                       C1 and review R2; it gives 10 to 15 dB more MAG
+%                       than the measured pattern at 50 to 99%) |
+%                       "nssl_measured" (one KOUN measurement; the Rev 5
+%                       baseline, now a sensitivity case) | "f1245"
 %     .atc_radar        "asr11" (default, M.1464-2 Radar C) | "asr9"
 %                       (M.1464-2 Radar B). See assumptions().
 %     .asr_pattern      "m1851_csc2" (default) | "f1245"
@@ -86,10 +91,13 @@ function out = nexrad_asr11_mag_rev1(opts)
 %     .nexrad_back_dB   NEXRAD gain below peak at 90 to 180 deg off axis
 %                       (default -55, the NSSL_1998 far level held to 180
 %                       deg; no measured back lobe, TODO). nssl_measured only.
-%     .asr_remote_sl_dBi  ASR remote sidelobe level (default 3.5,
-%                       M.1464-2 Radar C; the ASR-9 uses the same value,
-%                       TODO). At or below the radar's first sidelobe
-%                       (+9.5 dBi ASR-11, +7.3 dBi ASR-9). m1851_csc2 only.
+%     .asr_remote_sl_dBi  ASR remote sidelobe level (default: +3.5 dBi
+%                       for the ASR-11, M.1464-2 Radar C; +5.5 dBi for the
+%                       ASR-9, the bound from its maximum azimuth
+%                       sidelobes of -28 dB, WEBER_1986, with the 33.5 dBi
+%                       gain; red team C2). At or below the radar's first
+%                       sidelobe (+9.5 dBi ASR-11, +7.3 dBi ASR-9).
+%                       m1851_csc2 only.
 %     .persist_thr_dBi  thresholds for the persistence table ([40 45 50 55
 %                       60 65 70])
 %     .n_samples        random-mode samples for the CDF (5e6)
@@ -369,6 +377,7 @@ switch atc
         A.asr.az_bw_deg = 1.45;     % M1464 Radar C (FI_ASR11 and WIKI_ASR11: 1.40)
         A.asr.el_bw_deg = 4.8;      % M1464 Radar C (WEBER_1999: 5 deg)
         A.asr.first_sl_dBi = 9.5;   % M1464 Radar C first sidelobe level
+        A.asr.remote_sl_dBi = 3.5;  % M1464 Radar C remote sidelobe level
         A.asr.notes = struct( ...
             "gain", "Radar C; FI_ASR11 > 33.5 dB; WEBER_1999 ~34 dB", ...
             "az_bw", "Radar C; FI_ASR11 1.40", ...
@@ -383,18 +392,18 @@ switch atc
         A.asr.az_bw_deg = 1.3;      % M1464 Radar B (WIKI_ASR9 and WEBER_1999: 1.4)
         A.asr.el_bw_deg = 4.8;      % M1464 Radar B (WIKI_ASR9 and WEBER_1999: 5 deg)
         A.asr.first_sl_dBi = 7.3;   % M1464 Radar B first sidelobe level
+        A.asr.remote_sl_dBi = 33.5 - 28;   % WEBER_1986: maximum azimuth sidelobes -28 dB (bound)
         A.asr.notes = struct( ...
             "gain", "Radar B; WEBER_1999 ~34 dB", ...
             "az_bw", "Radar B; WIKI_ASR9 and WEBER_1999 1.4", ...
             "el_bw", "Radar B; WIKI_ASR9 and WEBER_1999 5 deg", ...
-            "remote", "Radar B gives no remote SL; Radar C (ASR-11) +3.5 dBi used (TODO)", ...
+            "remote", "Radar B gives no remote SL; WEBER_1986: maximum azimuth sidelobes -28 dB, so at most +5.5 dBi with the 33.5 dBi gain", ...
             "tilt", "Radar B vertical scan not applicable; Radar C range +2.5 to -2.5 used as the model limit; 0 puts the beam nose on the horizon (TODO: site value)", ...
             "rate", "Radar B 75 deg/s; WIKI_ASR9 12.5 rpm; WP_REV3 12.5 rpm");
 end
 A.asr.csc2_end_deg = 30;    % M1464 Radars B and C: cosecant-squared to +30 deg
-A.asr.remote_sl_dBi = 3.5;  % M1464 Radar C remote sidelobe level (ASR-9: TODO, Radar B gives none)
 A.asr.az_sll_dB = A.asr.first_sl_dBi - A.asr.g_max_dBi;    % -24.5 dB (ASR-11), -26.2 dB (ASR-9) -> M1851 Table 9 cosine taper
-A.asr.floor_dB = A.asr.remote_sl_dBi - A.asr.g_max_dBi;    % -30.5 dB (ASR-11), -30.0 dB (ASR-9) below peak
+A.asr.floor_dB = A.asr.remote_sl_dBi - A.asr.g_max_dBi;    % -30.5 dB (ASR-11), -28.0 dB (ASR-9) below peak
 A.asr.tilt_range_deg = [-2.5 2.5];  % M1464 Radar C vertical scan type; default tilt 0 (TODO)
 A.asr.rate_rpm = 12.5;      % M1464 Radars B and C 75 deg/s; FI_ASR11, WIKI_ASR9 12.5 rpm; WP_REV3 Table 4.4-1
 % Rotation-rate variance. The FAA standard and tolerance for the ASR-11
@@ -479,6 +488,8 @@ c = {
     "https://www.forecastinternational.com/archive/disp_pdf.cfm?DACH_RECNO=1032"
 "WEBER_1999", "M. E. Weber, ""FAA Surveillance Radar Data as a Complement to the WSR-88D Network,"" MIT Lincoln Laboratory ATC-266, 1999, Section 3.1 (ASR-9 and ASR-11 beams: 1.4 deg azimuth, 5 deg elevation, about 34 dB, essentially identical patterns).", ...
     "https://archive.ll.mit.edu/mission/aviation/publications/publication-files/atc-reports/Weber_1999_ATC-266_WW-15318.pdf"
+"WEBER_1986", "M. E. Weber, ""Assessment of ASR-9 Weather Channel Performance: Analysis and Simulation,"" MIT Lincoln Laboratory ATC-138, 1986, Section II.A (azimuth beamwidth 1.4 deg, maximum sidelobes -28 dB; gain 34 dB, Table II-1).", ...
+    "https://archive.ll.mit.edu/mission/aviation/publications/publication-files/atc-reports/Weber_1986_ATC-138_WW-15318.pdf"
 "WIKI_ASR11", "Wikipedia, ""ASR-11"" (12.5 rpm, 1.4 deg horizontal and 5 deg vertical beamwidth, 25 kW).", ...
     "https://en.wikipedia.org/wiki/ASR-11"
 "WIKI_ASR9", "Wikipedia, ""ASR-9"" (2.7-2.9 GHz, 1.1 MW, 1.0 us pulse, two CPIs, 12.5 rpm, 1.4 deg azimuth beamwidth, 5 deg elevation, cosecant-squared high and low beams).", ...
@@ -531,9 +542,13 @@ sys_n.region_sll_dB = struct("nssl_measured", A.nex.nssl_env_dB(1), "roc_spec", 
     "f1245", NaN).(opts.nexrad_pattern);
 
 % ---- ATC radar antenna (low beam, tx = rx)
+rsl = opts.asr_remote_sl_dBi;
+if isnan(rsl)
+    rsl = A.asr.remote_sl_dBi;                  % the radar's default (assumptions)
+end
 switch opts.asr_pattern
     case "m1851_csc2"
-        floor_dB = opts.asr_remote_sl_dBi - A.asr.g_max_dBi;     % default 3.5 dBi -> -30.5 dB
+        floor_dB = rsl - A.asr.g_max_dBi;        % ASR-11 3.5 dBi -> -30.5 dB
         ant_a = struct("type", "rect", "g_max_dBi", A.asr.g_max_dBi, ...
             "az_bw_deg", A.asr.az_bw_deg, "az_sll_dB", A.asr.az_sll_dB, ...
             "el_bw_deg", A.asr.el_bw_deg, "el_pattern", "csc2", ...
@@ -546,7 +561,7 @@ if opts.asr_tilt_deg < A.asr.tilt_range_deg(1) || opts.asr_tilt_deg > A.asr.tilt
     error("radar_coupling:asrTilt", "asr_tilt_deg must lie in the M.1464-2 Radar C range [%g %g] deg.", ...
         A.asr.tilt_range_deg(1), A.asr.tilt_range_deg(2));
 end
-if opts.asr_remote_sl_dBi > A.asr.first_sl_dBi
+if rsl > A.asr.first_sl_dBi
     error("radar_coupling:badRemote", "opts.asr_remote_sl_dBi must be at or below the %+.1f dBi %s first sidelobe.", ...
         A.asr.first_sl_dBi, A.asr.name);
 end
@@ -1077,13 +1092,13 @@ if ~isfield(opts, "seed") || isempty(opts.seed)
     error("radar_coupling:missingSeed", "opts.seed is required for reproducibility.");
 end
 d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_deg", Inf, ...
-    "cd_rate_deg_s", [], "low_el_deg", [], "low_el_mode", "add", "nexrad_pattern", "nssl_measured", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
+    "cd_rate_deg_s", [], "low_el_deg", [], "low_el_mode", "add", "nexrad_pattern", "roc_spec", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
     "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
     "nexrad_sector_deg", 360, "nexrad_sector_center_deg", 0, "nexrad_sweep_mode", "restart", ...
     "nexrad_turnaround_s", 0, "atc_sector_deg", 360, "atc_sector_center_deg", 0, "nexrad_back_dB", -55, ...
     "ts_method", "fixed", "ts_delta_deg", 4, "asr_drift_step_deg_s", 0.02, ...
-    "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
+    "asr_remote_sl_dBi", NaN, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
     "plot_flag", false, "keep_ts1", false, "first_trial", 1, "cdf_pct", unique([0:1:100, 99.5 99.9 99.95 99.99 99.995 99.999]));
@@ -1158,7 +1173,7 @@ end
 if opts.nexrad_back_dB > -35
     error("radar_coupling:badBack", "opts.nexrad_back_dB must be at or below the -35 dB first sidelobe.");
 end
-if opts.asr_remote_sl_dBi ~= 3.5 && opts.asr_pattern ~= "m1851_csc2"
+if ~isnan(opts.asr_remote_sl_dBi) && opts.asr_pattern ~= "m1851_csc2"
     error("radar_coupling:remoteNeedsM1851", "opts.asr_remote_sl_dBi applies to asr_pattern ""m1851_csc2"" only.");
 end
 if ~isscalar(opts.first_trial) || opts.first_trial < 1 || opts.first_trial ~= round(opts.first_trial)

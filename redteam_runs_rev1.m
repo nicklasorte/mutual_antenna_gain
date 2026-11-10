@@ -66,8 +66,10 @@ end
 % =========================================================================
 function ctx = base_context(opts)
 % Systems, scan modes and gain tables shared by the attacks.
+% The step 8 evidence used the measured pattern (the default then); keep it
+% so the register reproduces. C1 and the NOAA case set the pattern.
 ob = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, ...
-    "cdf_method", "exact"));
+    "cdf_method", "exact", "nexrad_pattern", "nssl_measured"));
 ctx.sys_n = ob.sys_nexrad;
 ctx.sys_a = ob.sys_asr11;
 [ctx.scans, ctx.names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
@@ -89,6 +91,7 @@ end
 function o = mode_opts(ctx, k, extra)
 % nexrad_asr11_mag_rev1 options for scan mode k plus the fields of extra.
 o = rmfield(ctx.cases{k}, "label");
+o.nexrad_pattern = "nssl_measured";              % step 8 baseline (see base_context)
 f = fieldnames(extra);
 for i = 1:numel(f)
     o.(f{i}) = extra.(f{i});
@@ -657,7 +660,7 @@ key = sprintf("%d pairs, 74-mode envelope. ROC specification minus NSSL measured
 r = row("C1", "The NSSL KOUN measured pattern represents the fleet", ...
     "ROC specification and F.1245 WSR-88D tables, same 1,000 random pairs, 74-mode envelope", ...
     "Difference reported for every percentile; the NOAA case uses the specification", "Reported", key, ...
-    rel(opts, evid(opts, "C1")), "Medium", "NOAA case uses roc_spec (see NOAA row). One measured antenna does not show fleet spread; a fleet sample is NOAA data, not public.");
+    rel(opts, evid(opts, "C1")), "Medium", "Closed 2026-11-10: roc_spec is now the default pattern (decision 7); the measured pattern stays as a sensitivity case. A fleet sample of measured patterns is NOAA data, not public.");
 end
 
 % -------------------------------------------------------------------------
@@ -689,7 +692,7 @@ end
 r = row("C2", "The ASR-9 remote sidelobe (+3.5 dBi, borrowed) is safe", ...
     "ASR-9, worst mode, 0/0 deg, remote sidelobe +0.5, +3.5, +6.5 dBi (exact CDF)", ...
     "One-for-one sensitivity confirmed; value stays TODO until a public source is found", res, key, ...
-    rel(opts, evid(opts, "C2")), "Medium", "Find a public ASR-9 sidelobe source; until then the NOAA case uses +6.5 dBi.");
+    rel(opts, evid(opts, "C2")), "Medium", "Closed 2026-11-10: public bound found (WEBER_1986, MIT LL ATC-138: maximum azimuth sidelobes -28 dB), so the ASR-9 default is now +5.5 dBi (33.5 dBi gain - 28 dB); the NOAA case keeps +6.5 dBi.");
 end
 
 % -------------------------------------------------------------------------
@@ -718,8 +721,8 @@ key = sprintf("Convention matches: both take the takeoff angle from the local ho
     max(abs(T.diff_dB)));
 r = row("C3", "Takeoff angles from the RFS tool mean what the model assumes", ...
     "Code reading of CouplingCalculations.cs and SpreadsheetIO.cs; MATLAB on-path gain vs the C# offset rule on three hand cases", ...
-    "Same angle within 0.01 deg", "Partial", key, rel(opts, evid(opts, "C3")), "Low", ...
-    "Checking three paths' angles against the tool needs an RFS workbook with takeoff-angle columns (the project workbook is over the 20 MB in-session limit; decision 5). Report the otherAntModel1 bug to the tool owner.");
+    "Same angle within 0.01 deg", "Closed (needs NOAA/FAA data)", key, rel(opts, evid(opts, "C3")), "Low", ...
+    "Closed 2026-11-10 as out of scope here. Method for whoever has the RFS workbook: take three pairs, recompute each takeoff angle from the profile (4/3 earth, antenna heights) and check it against the tool's ""Takeoff Angle(deg)"" columns within 0.01 deg; then feed those angles to mag_pair_cdf_rev1. Report the otherAntModel1 bug (X4) to the tool owner.");
 end
 
 % -------------------------------------------------------------------------
@@ -768,8 +771,8 @@ key = sprintf("Far field: WSR-88D %.1f to %.1f km (2.7 to 3.0 GHz); ASR %.2f km;
     max(T.far_field_km(startsWith(T.antenna, "ASR"))), max(T.far_field_km(startsWith(T.antenna, "pair"))), ...
     max(T.far_field_km(startsWith(T.antenna, "WSR"))));
 r = row("C5", "Far-field patterns apply", "2D^2/lambda for each antenna at 2.7 to 3.0 GHz, against the shortest pair distance in the study", ...
-    "Every pair beyond the far-field distance, or flagged", "Partial", key, rel(opts, evid(opts, "C5")), "Low", ...
-    "Flag pairs under 1.5 km once the pair list is available (RFS workbook 'Ground Distance' column; decision 5). The ASR aperture is an estimate.");
+    "Every pair beyond the far-field distance, or flagged", "Closed (needs NOAA/FAA data)", key, rel(opts, evid(opts, "C5")), "Low", ...
+    "Closed 2026-11-10 as out of scope here. Rule for the study: flag every pair closer than 1.5 km (WSR-88D far field at 3.0 GHz; 3.7 km under the strict two-antenna criterion) from the RFS workbook's ""Ground Distance"" column and treat it with a near-field method. The ASR aperture is an estimate.");
 end
 
 % =========================================================================
@@ -1065,14 +1068,14 @@ c = {
 "E1", "Centered on the path is the worst case", "Bearing swept across and beyond the sector (step 5)", "Maximum at the center, or the true worst bearing reported", "Finding", "Holds for a restart sweep (99.99%: 69.95 dBi centered, 64.40 at the edge); fails for a bidirectional sweep with turnaround: the edge is 7.4 dB worse than the center at 99.99%.", "docs/figures/sector_bearing_sweep_rev1.csv", "Medium", "Sector runs sweep the bearing; never assume the center."
 "E2", "Restarting sweep equals back-and-forth sweep", "Both sweep laws, with turnaround, center and edge paths (step 5)", "Difference stated; a path at the sector edge is tested", "Finding", "They differ most at the sector edge (see E1); the sweep law is an input with no public operational value (TODO).", "docs/figures/sector_bearing_sweep_rev1.csv", "Medium", "Ask NOAA for the sector sweep law if sector scans are proposed."
 "F2", "The tests would catch a bug", "Ten planted faults across both models (redteam_fault_seed_rev1)", "Every fault fails at least one test", "Pass", "10 of 10 caught (rerun after the review fixes). Fault 6 (swapped interpolation weights), once caught only by the pinned regression reference, now also fails testInterpolationWeightsPointTheRightWay and testUpperAndRoundingNeverBelowQuantile.", "docs/figures/fault_seed_rev1.csv", "None", "None"
-"F3", "The model agrees with the C# tool", "Extend crosscheck_csharp_rev1 to the tool's gain-distribution and MACD outputs for one pair with nonzero takeoff angles", "Same percentiles within the tool's bin width", "Blocked", "Needs an RFS workbook with takeoff-angle and coupling-distribution columns; the project workbook is over the 20 MB in-session limit.", "-", "Medium", "Decision 5: provide a cleared, smaller RFS workbook."
+"F3", "The model agrees with the C# tool", "Extend crosscheck_csharp_rev1 to the tool's gain-distribution and MACD outputs for one pair with nonzero takeoff angles", "Same percentiles within the tool's bin width", "Closed (needs NOAA/FAA data)", "Closed 2026-11-10 as out of scope here: needs an RFS workbook with takeoff-angle and coupling-distribution columns (the project workbook is over the 20 MB in-session limit).", "-", "Medium", "Method for whoever has the workbook: pick one pair with nonzero takeoff angles, run the tool's ScanRateAnalysis and mag_exact_cdf_rev1 with the same patterns, rates and angles, and compare percentiles within the tool's bin width (crosscheck_csharp_rev1 already matches the antenna patterns)."
 "X1", "The wrapper handles every ATC geometry", "Found by the NOAA run: ASR tilt 2.5 deg with a +6.5 dBi floor", "Runs without error", "Fixed", "The ATC gain toward the path was flat (floor at every azimuth), so the lobe-region edges were empty and nexrad_asr11_mag_rev1 crashed. Fixed: no main-beam region in that case.", "test_nexrad_asr11_rev1.m (testFlatAtcCutRuns)", "Medium", "None"
 "X2", "Closed-form slices handle any sector", "Found by F1: 10 of 500 random cases crashed (sector inside one segment of a coarse table)", "Runs and matches the grid", "Fixed", "refine_cells built a row instead of a column when a slice spanned one pattern cell (repelem of a scalar). Fixed; the F1 rerun has no crash.", "test_gain_slice_rev1.m (testSectorInsideOnePatternSegment)", "High", "None"
 "X3", "The stated grid bias bounds the exact CDF error", "Found by F1: 3 cases above the old 2-bin bound by 0.004 to 0.011 dB", "Error inside the stated bias", "Fixed", "Closed-form slices round up twice (each cell's larger end gain, then the bin edge), so the bound is 2 bins per antenna: mag_exact_cdf_rev1 bias_dB 0.2 dB (was 0.1), mag_pair_cdf_rev1 0.3 dB (was 0.2). Values unchanged; only the stated bound. F1 rerun: 0 outside.", "docs/figures/redteam/F1_rev1.csv", "Low", "None"
 "X4", "The C# tool applies each antenna's own fallback model", "Code reading for C3 (CouplingCalculations.cs)", "Antenna 2 uses otherAntModel2", "Finding", "CalculateWorstCaseCoupling_dBi passes otherAntModel1 for antenna 2, in the live and the commented-out versions. It matters only when the two antennas use different fallback models below the CSC^2 start angle.", "CouplingCalculations.cs (project)", "Low", "Report to the tool owner."
 "L2", "Layer 2: independent review", "A separate agent that had not seen the plan, the register or the code history tried to break the results (2026-11-10)", "Findings fixed or reported", "Done", "Four of seven claims broken (R1 to R6 below); exact slices, bias at nodes, exact vs Monte Carlo, FFT vs direct and random mode vs time series held. R1, R3 and R4 fixed; R2 is C1.", "-", "Info", "Human review by NOAA and FAA subject-matter experts (layer 3)."
 "R1", "Bidirectional sector scans are modeled correctly in the time series", "Review: sample the scan clock and the engine time series for a 30 deg bidirectional sector with 0.5 s turnaround", "Time series visits the sector as random mode assumes", "Fixed", "Each cut restarted the back-and-forth sweep at the same point, so part of the sector was never visited: per-volume maxima 13 to 39 dB low; engine time series 10 dB low at 99% with the path 10 deg off center. Now the sweep phase runs on across cuts and volumes. CDFs (random, exact) were not affected. Rerun of the review's check (30 deg sector, 10 deg off center, 4 trials of 300 s): per-trial maximum of the volume maxima 68.3, 45.5, 71.4, 45.5 dBi (was 29.3, 45.5, 32.6, 40.6; restart 66.3, 61.7, 71.5, 45.9). No committed output used a bidirectional time series (sector_bearing_sweep_rev1.csv holds CDF percentiles).", "test_sectors_rev1.m (testBidirectionalClockSweepsWholeSector, testEngineBidirectionalOddPassesMatchExact)", "High", "None"
-"R2", "Inputs are conservative enough", "Review: ROC specification vs NSSL measured WSR-88D pattern", "Protection default is conservative", "Finding", "Same as C1: the specification gives 10 to 15 dB more at 50 to 99%. Plan decision 7.", "docs/figures/redteam/C1_rev1.csv", "High", "Decide the protection default (decision 7)."
+"R2", "Inputs are conservative enough", "Review: ROC specification vs NSSL measured WSR-88D pattern", "Protection default is conservative", "Fixed", "Same as C1: the specification gives 10 to 15 dB more at 50 to 99%. Decision 7 (2026-11-10): nexrad_pattern now defaults to roc_spec; Rev 5 reproductions and pinned references set nssl_measured explicitly.", "docs/figures/redteam/C1_rev1.csv", "High", "None"
 "R3", "The worst-mode envelope bounds any mix of scan modes", "Review: AVSET terminations above 6.4 deg against the 74-mode envelope, takeoff angles 6 to 10 deg", "Envelope at or above every operational mode", "Fixed", "A termination above 6.4 deg gives the cuts just above 6.4 deg more time than any of the 74 modes: envelope up to 4.35 dB low at 99.9% (2,000 random pairs; every pair with a WSR-88D takeoff angle above 6 deg changed, none below 5.5 deg by more than 0.55 dB). The default mode set now holds every termination: 216 modes; pair time about 2.0 ms against 1.75 ms. The 74-mode set stays available as ""lowest"" for the Rev 5 reproductions.", "test_mag_lookup_rev1.m (testAvsetTerminationsCloseEnvelopeGap)", "Medium", "Use the default (216-mode) set for Rev 6."
 "R4", "Nearest-node and rounded angles are conservative", "Review: interp ""nearest"" and el_round_deg 0.01 and 0.1 against exact slices", "Never below the stated bias", "Fixed", "Nearest was up to 0.50 dB low, rounding to 0.1 deg up to 0.85 dB low. ""nearest"" is replaced by ""upper"" (larger of the two neighbors at each probability level); el_round_deg now gives each cell's upper envelope. Both are never below the unrounded quantile value.", "test_mag_lookup_rev1.m (testUpperAndRoundingNeverBelowQuantile)", "Medium", "None"
 "R5", "Separable sector slices report the exact peak gain", "Review: brute-force peak of separable sector slices", "Doc matches behavior", "Fixed", "h.gmax was the largest azimuth sample, up to 0.007 dB below the true peak. Separable and grid slices now also evaluate az_off = 0 (when inside) and the interval ends: exact when the peak is the main beam or an end; the help says so.", "test_gain_slice_rev1.m (testSeparableSectorPeakIsExact)", "Low", "None"

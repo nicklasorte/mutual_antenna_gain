@@ -21,6 +21,7 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Run the time series on event windows only (exact maxima above the floor), or in parfor | `nexrad_asr11_mag_rev1(struct("seed", 1, "ts_method", "events", "parallel_flag", 1))` |
 | Build a time-series event library once per pair of scan modes, then get any pair's per-scan maxima, persistence and corrupted-radial counts | `lib = scan_event_library_rev1(out.scan_max.clock_spec, struct("seed", 1, "n_trials", 120))`; `mag_pair_timeseries_rev1(lib, ant_n, ant_a, el_n_deg, el_a_deg)` |
 | Run the same model with the ASR-9 | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3, "atc_radar", "asr9"))` |
+| Pattern defaults | WSR-88D: ROC specification envelope (`nexrad_pattern` "roc_spec"); "nssl_measured" (the Rev 5 baseline) is a sensitivity case. ASR remote sidelobe: +3.5 dBi ASR-11 (M.1464-2 Radar C), +5.5 dBi ASR-9 (bound from MIT LL ATC-138) |
 | Sweep every VCP mode for the ASR-9 and compare it with the ASR-11 | `example_asr9_rev1` |
 | Sweep the 74 VCP modes of the Rev 5 study | `example_nexrad_asr11_rev1` |
 | Run the sensitivity sweep | `example_sensitivity_rev1` |

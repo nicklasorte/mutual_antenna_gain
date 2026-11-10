@@ -12,7 +12,7 @@ end
 
 % =========================================================================
 function setupOnce(tc)
-o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured"));
 scan_n = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4);
 tc.TestData.sys_a = o.sys_asr11;
 tc.TestData.sys_n = struct("name", "WSR-88D", "tx", o.sys_nexrad.tx, "rx", o.sys_nexrad.tx, "scan", scan_n);
@@ -143,7 +143,8 @@ pct = [99 99.9 99.99 99.999];
 summ = cell(1, numel(c));
 names = strings(1, numel(c));
 for i = 1:numel(c)
-    o = struct("seed", 1, "n_samples", 1e3, "duration_s", 30, "n_trials", 1, "cdf_method", "exact");
+    o = struct("seed", 1, "n_samples", 1e3, "duration_s", 30, "n_trials", 1, "cdf_method", "exact", ...
+        "nexrad_pattern", "nssl_measured");   % Rev 5 pattern
     f = setdiff(fieldnames(c{i}), "label");
     for k = 1:numel(f)
         o.(f{k}) = c{i}.(f{k});

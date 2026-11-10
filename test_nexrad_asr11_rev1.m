@@ -236,6 +236,19 @@ verifyEqual(tc, p.off_interp([5 9.9 10.5 180]), [-29 -29 -40 -40], "AbsTol", 1e-
 verifyEqual(tc, p.g_max_dBi, 45.5);
 end
 
+function testDefaultsAreConservative(tc)
+% Decision 7 and red team C2: the WSR-88D defaults to the ROC
+% specification envelope; the ASR-9 remote sidelobe to the WEBER_1986 bound.
+o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+verifyEqual(tc, o.opts.nexrad_pattern, "roc_spec");
+p = antenna_prepare_rev1(o.sys_nexrad.tx);
+verifyEqual(tc, p.off_interp(5), -29, "AbsTol", 1e-9);
+o9 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "atc_radar", "asr9"));
+verifyEqual(tc, o9.sys_asr11.tx.floor_dB, 5.5 - 33.5, "AbsTol", 1e-12);
+o11 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+verifyEqual(tc, o11.sys_asr11.tx.floor_dB, 3.5 - 34, "AbsTol", 1e-12);
+end
+
 function testAsr11PatternValues(tc)
 p = antenna_prepare_rev1(quick_run(struct()).sys_asr11.tx);
 z = zeros(4, 1);
@@ -730,21 +743,21 @@ end
 % =========================================================================
 function testAsr9Parameters(tc)
 % ASR-9 = M.1464-2 Table 1 Radar B: 33.5 dBi, 1.3 deg azimuth, 4.8 deg
-% elevation, +7.3 dBi first sidelobe; remote sidelobe +3.5 dBi (Radar C,
-% TODO); 12.5 rpm.
+% elevation, +7.3 dBi first sidelobe; remote sidelobe +5.5 dBi (bound from
+% WEBER_1986 maximum sidelobes -28 dB); 12.5 rpm.
 out = quick_run(struct("atc_radar", "asr9"));
 a = out.sys_asr11;
 verifyEqual(tc, a.name, "ASR-9");
 verifyEqual(tc, [a.tx.g_max_dBi, a.tx.az_bw_deg, a.tx.el_bw_deg], [33.5 1.3 4.8]);
 verifyEqual(tc, a.tx.az_sll_dB, 7.3 - 33.5, "AbsTol", 1e-12);
-verifyEqual(tc, a.tx.floor_dB, 3.5 - 33.5, "AbsTol", 1e-12);
+verifyEqual(tc, a.tx.floor_dB, 5.5 - 33.5, "AbsTol", 1e-12);   % WEBER_1986 bound (red team C2)
 verifyEqual(tc, a.scan.rate_rpm, 12.5);
 verifyEqual(tc, a.region_sll_dB, 7.3 - 33.5, "AbsTol", 1e-12);
 verifyEqual(tc, out.opts.atc_radar, "asr9");
 T = out.assumptions;
 verifyEqual(tc, T.value(T.parameter == "ASR-9 peak gain"), 33.5);
 verifyEqual(tc, T.source(T.parameter == "ASR-9 azimuth beamwidth"), "M1464");
-verifyTrue(tc, contains(T.note(T.parameter == "ASR-9 floor (remote sidelobes)"), "TODO"));
+verifyTrue(tc, contains(T.note(T.parameter == "ASR-9 floor (remote sidelobes)"), "WEBER_1986"));
 verifyFalse(tc, any(startsWith(T.parameter, "ASR-11")), "only the selected radar is listed");
 verifyTrue(tc, any(out.citations.key == "WIKI_ASR9"));
 verifyTrue(tc, contains(out.citations.reference(out.citations.key == "M1464"), "Radar B (ASR-9)"));
@@ -752,7 +765,7 @@ verifyTrue(tc, contains(out.citations.reference(out.citations.key == "M1464"), "
 R = out.ref_levels;
 g_n_mb = 45.5 - 12*(0.5/0.925)^2;
 verifyEqual(tc, R.mag_dBi(1), g_n_mb + 33.5, "AbsTol", 1e-3);
-verifyEqual(tc, R.mag_dBi(3), g_n_mb + 3.5, "AbsTol", 1e-3);
+verifyEqual(tc, R.mag_dBi(3), g_n_mb + 5.5, "AbsTol", 1e-3);   % ASR-9 remote sidelobe +5.5 dBi (WEBER_1986)
 verifyEqual(tc, R.mag_dBi(5), 33.5 + 45.5 - 55, "AbsTol", 1e-6);
 verifyEqual(tc, R.combination(2), "NEXRAD main beam + ASR-9 near sidelobe");
 verifyEqual(tc, out.sensitivity.mag_dBi(1), 45.5 + 33.5, "AbsTol", 1e-9);
@@ -775,8 +788,10 @@ verifyEqual(tc, f.sys_asr11.tx.g_max_dBi, 34, "WP_REV3 F.1245 gain for the ASR-9
 end
 
 function out = quick_run(o)
-% Small run for tests; fields of o override.
-d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1);
+% Small run for tests; fields of o override. The hand values in these
+% tests were written for the measured WSR-88D pattern (the default before
+% decision 7), so quick runs keep it unless a test sets another.
+d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured");
 f = fieldnames(o);
 for i = 1:numel(f)
     d.(f{i}) = o.(f{i});

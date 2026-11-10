@@ -21,7 +21,7 @@
 
 if ~exist("sens_base", "var")
     sens_base = struct("seed", 20261105, "vcp", 212, "sails", 3, "avset_top_deg", 6.4, ...
-        "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);
+        "n_samples", 5e6, "duration_s", 3600, "n_trials", 4, "nexrad_pattern", "nssl_measured");   % Rev 5 inputs
 end
 if exist("example_overrides", "var")
     sens_base = merge_overrides_rev1(sens_base, example_overrides);

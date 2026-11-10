@@ -10,7 +10,7 @@
 %     out_dir        folder for the saved tables (default tempdir/mag_lookup;
 %                    the tables are about 30 MB, so keep them out of git)
 %     atc_radar      "asr11" (default) or "asr9"
-%     nexrad_pattern "nssl_measured" (default), "roc_spec" or "f1245"
+%     nexrad_pattern "roc_spec" (default), "nssl_measured" or "f1245"
 %     el_tx, el_rx   takeoff angles of the worked pair (default 2.0, 1.7 deg)
 %     n_batch        random pairs for the timing run (default 1000)
 %     parallel_flag  1 builds the tables and runs the batch in parfor
@@ -22,7 +22,7 @@
 
 if ~exist("out_dir", "var"), out_dir = fullfile(tempdir, "mag_lookup"); end
 if ~exist("atc_radar", "var"), atc_radar = "asr11"; end
-if ~exist("nexrad_pattern", "var"), nexrad_pattern = "nssl_measured"; end
+if ~exist("nexrad_pattern", "var"), nexrad_pattern = "roc_spec"; end
 if ~exist("el_tx", "var"), el_tx = 2.0; end
 if ~exist("el_rx", "var"), el_rx = 1.7; end
 if ~exist("n_batch", "var"), n_batch = 1000; end

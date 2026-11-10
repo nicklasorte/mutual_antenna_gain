@@ -11,7 +11,7 @@ end
 
 % =========================================================================
 function setupOnce(tc)
-o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured"));
 scan_n = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4);   % Rev 5 worst mode
 tc.TestData.sys_a = o.sys_asr11;
 tc.TestData.sys_n = struct("name", "WSR-88D", "tx", o.sys_nexrad.tx, "rx", o.sys_nexrad.tx, "scan", scan_n);

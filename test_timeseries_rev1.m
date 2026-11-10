@@ -13,7 +13,7 @@ end
 
 % =========================================================================
 function setupOnce(tc)
-mode = struct("vcp", 212, "sails", 3, "avset_top_deg", 6.4);
+mode = struct("vcp", 212, "sails", 3, "avset_top_deg", 6.4, "nexrad_pattern", "nssl_measured");   % Rev 5 inputs
 tc.TestData.mode = mode;
 o = mode;
 o.seed = 3;
