@@ -30,7 +30,18 @@ w = tau - (vol - 1)*C.t_vol;
 cut = discretize(w, [C.cut_start; C.t_vol]);
 cut(isnan(cut)) = numel(C.rate_n);
 sec = C.sec_n;
-if sec < 360
+if sec < 360 && C.sweep_n == "bidirectional"
+    % One pass per cut; the sweep phase (in passes) runs on across cuts and
+    % volumes, so the beam turns at the edges instead of jumping back to a
+    % fixed start each cut (review R1: a restart of the back-and-forth
+    % sweep at every cut left part of the sector unvisited). The start
+    % phase az0_n/180 is uniform over one forward-and-back cycle.
+    r_c = abs(C.rate_n(cut));
+    pass = sec./r_c + C.turn_n;
+    phi = C.az0_n/180 + (vol - 1)*numel(C.rate_n) + (cut - 1) + (w - C.cut_start(cut))./pass;
+    u = sector_sweep_rev1(phi.*pass, r_c, sec, 0, "bidirectional", C.turn_n);
+    st_n = state(mod(C.center_n + u - sec/2, 360), C.el_n(cut));
+elseif sec < 360
     u = sector_sweep_rev1(w - C.cut_start(cut), C.rate_n(cut), sec, C.az0_n/360*sec, C.sweep_n, C.turn_n);
     st_n = state(mod(C.center_n + u - sec/2, 360), C.el_n(cut));
 else

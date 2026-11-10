@@ -21,7 +21,7 @@ thr = [40 50 60];                                  % per-revolution thresholds (
 
 % ---- Case list: the paper baseline, then every VCP mode (74), with the
 %      option combinations the RDA allows (vcp_mode_cases_rev1)
-c = vcp_mode_cases_rev1();
+c = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
 fprintf("%d cases (%d VCP modes and the paper baseline)\n", numel(c), numel(c) - 1);
 
 % ---- Run

@@ -22,13 +22,13 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Build a time-series event library once per pair of scan modes, then get any pair's per-scan maxima, persistence and corrupted-radial counts | `lib = scan_event_library_rev1(out.scan_max.clock_spec, struct("seed", 1, "n_trials", 120))`; `mag_pair_timeseries_rev1(lib, ant_n, ant_a, el_n_deg, el_a_deg)` |
 | Run the same model with the ASR-9 | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3, "atc_radar", "asr9"))` |
 | Sweep every VCP mode for the ASR-9 and compare it with the ASR-11 | `example_asr9_rev1` |
-| Sweep every VCP mode and option combination (74 modes) | `example_nexrad_asr11_rev1` |
+| Sweep the 74 VCP modes of the Rev 5 study | `example_nexrad_asr11_rev1` |
 | Run the sensitivity sweep | `example_sensitivity_rev1` |
 | Find how long equal or multiple scan rates stay aligned | `example_asr11_drift_rev1` |
 | Make every figure and table in the report | `report_figures_rev5` (writes `docs/figures`) |
-| Build a gain table once per radar (all 74 VCP modes for the WSR-88D) | `T = gain_dist_table_rev1(ant, nexrad_mode_scans_rev1(), opts)` |
+| Build a gain table once per radar (all 216 WSR-88D modes: every VCP option and AVSET termination; `nexrad_mode_scans_rev1("lowest")` gives the 74 Rev 5 modes) | `[s, n] = nexrad_mode_scans_rev1(); T = gain_dist_table_rev1(ant, s, struct("mode_names", n))` |
 | Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` (about 1.1 ms per pair for thousands of pairs) |
-| Make a large pair study faster by sharing slices between nearby angles | `mag_pair_cdf_rev1(T_tx, T_rx, el_tx, el_rx, struct("el_round_deg", 0.01))` |
+| Make a large pair study faster by sharing slices between nearby angles (each 0.01 deg cell gets its upper envelope, so results are never below the unrounded ones) | `mag_pair_cdf_rev1(T_tx, T_rx, el_tx, el_rx, struct("el_round_deg", 0.01))` |
 | Build both tables and run a worked pair and 1,000 random pairs | `example_mag_lookup_rev1` |
 | Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |
 | Get one antenna's exact gain distribution at a tilt and takeoff angle, full rotation or a sector | `h = gain_slice_rev1(gain_slice_prep_rev1(ant), tilt_deg, el_deg, az_lim_deg)` |
@@ -56,7 +56,7 @@ The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code c
 | `antenna_prepare_rev1.m`, `antenna_gain_rev1.m`, `m1851_rect_field_rev1.m` | Antenna patterns (Statgain, F.1245, M.1851-2, measured, off-axis table, planar array) |
 | `nexrad_vcp_rev1.m` | WSR-88D VCP cut tables decoded from Level II data, with SAILS, MRLE, and AVSET |
 | `nexrad_asr11_mag_rev1.m` | WSR-88D and ASR-11 or ASR-9 model (`opts.atc_radar`): per-scan maxima, reference levels, pattern-region pairs, persistence |
-| `vcp_mode_cases_rev1.m` | The 74 VCP modes and the paper baseline, for the sweeps |
+| `vcp_mode_cases_rev1.m` | The WSR-88D modes (216 by default, every AVSET termination; 74 with "lowest") and the paper baseline, for the sweeps |
 | `mag_mode_envelope_rev1.m`, `mag_mode_summary_rev1.m` | Bound on the MAG for any mix of scan modes |
 | `mag_sensitivity_rev1.m` | One-at-a-time sensitivity |
 | `alignment_dwell_rev1.m` | Alignment of equal, multiple, or volume-locked scan rates |

@@ -39,8 +39,11 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %                   each pair (default false)
 %     .interp       "quantile" (default) interpolates between the two
 %                   neighboring grid elevations in quantile space (no false
-%                   double peaks); "nearest" uses the nearest grid
-%                   elevation; "exact" computes every slice at the pair's
+%                   double peaks); "upper" takes, at each probability
+%                   level, the larger of the two neighboring grid
+%                   elevations (never below "quantile"; replaces
+%                   "nearest", which could be 0.5 dB low, review R4);
+%                   "exact" computes every slice at the pair's
 %                   own elevations with gain_slice_rev1 (no interpolation
 %                   error; slower for many tilts; tables made after
 %                   gain_slice_rev1 only)
@@ -48,10 +51,14 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %     .conv_method  "fft" (default: one FFT per slice column, one inverse
 %                   FFT for every tilt pair) | "direct" (conv; same
 %                   results, kept for checks)
-%     .el_round_deg  round takeoff angles to this step before grouping
-%                   (default 0: exact angles). Pairs that share the
-%                   heavier side's angle share its slices; rounding to,
-%                   for example, 0.01 deg makes more pairs share them
+%     .el_round_deg  group takeoff angles into cells of this step
+%                   (default 0: exact angles). Every pair in a cell gets
+%                   the upper envelope of the cell (its two ends and any
+%                   grid elevation inside, each interpolated as .interp),
+%                   so the result is never below the unrounded one (review
+%                   R4: plain rounding came out up to 0.85 dB low). Pairs
+%                   in one cell share slices; the upward bias grows with
+%                   the step
 %
 %   Scan modes: every pair of included modes (tx mode, rx mode) is
 %   convolved, and the result is the worst-mode envelope: at each gain the
@@ -146,17 +153,15 @@ o = opts;
 % side with more slice columns, usually the WSR-88D's 21 tilts, and make
 % that side's slices and their FFT once per group; the other side is made
 % once per distinct elevation (and bearing) and reused.
-et = el_tx_deg;
-er = el_rx_deg;
-if opts.el_round_deg > 0
-    et = round(et/opts.el_round_deg)*opts.el_round_deg;
-    er = round(er/opts.el_round_deg)*opts.el_round_deg;
-end
+% A key is [lo, hi, bearing]: the angle cell whose upper envelope a pair
+% gets (lo = hi: the angle itself).
+[lo_t, hi_t] = angle_cell(el_tx_deg, sd_t, opts);
+[lo_r, hi_r] = angle_cell(el_rx_deg, sd_r, opts);
 heavy_r = n_cols(sd_r) >= n_cols(sd_t);
 if heavy_r
-    [kh, kl] = deal([er, brg_r.*is_sec_r], [et, brg_t.*is_sec_t]);
+    [kh, kl] = deal([lo_r, hi_r, brg_r.*is_sec_r], [lo_t, hi_t, brg_t.*is_sec_t]);
 else
-    [kh, kl] = deal([et, brg_t.*is_sec_t], [er, brg_r.*is_sec_r]);
+    [kh, kl] = deal([lo_t, hi_t, brg_t.*is_sec_t], [lo_r, hi_r, brg_r.*is_sec_r]);
 end
 [uh, ~, gh] = unique(kh, "rows");
 [ul, ~, gl] = unique(kl, "rows");
@@ -168,7 +173,7 @@ if ~heavy_r
 end
 pr = [];                                          % keys are sorted, so one interval's keys are adjacent
 for i = 1:size(ul, 1)
-    [light{i}.p, light{i}.k0, light{i}.g, pr] = slices_at(sd_l, ul(i, 1), ul(i, 2), opts.interp, pr);
+    [light{i}.p, light{i}.k0, light{i}.g, pr] = slices_cell(sd_l, ul(i, :), opts.interp, pr);
 end
 L_light = max(cellfun(@(x) size(x.p, 1), light));
 members = accumarray(gh, (1:n_pair)', [size(uh, 1) 1], @(x) {x});
@@ -176,7 +181,7 @@ members = accumarray(gh, (1:n_pair)', [size(uh, 1) 1], @(x) {x});
 % part of the quantile interpolation that does not depend on the position
 % in the interval (one sort per interval, not per elevation).
 n_g = size(uh, 1);
-if opts.interp == "quantile" && sd_h.sector_deg == 360
+if ismember(opts.interp, ["quantile", "upper"]) && sd_h.sector_deg == 360
     ch = discretize(uh(:, 1), sd_h.grid);
 else
     ch = (1:n_g)';
@@ -219,7 +224,7 @@ end
 if opts.return_curve
     R.curve = curve;
 end
-n_interp = 2*(opts.interp == "quantile");
+n_interp = 2*ismember(opts.interp, ["quantile", "upper"]);
 R.bias_dB = (4 + n_interp)*dg;                   % 2 bins per table from the slices, 1 per table from interpolation
 R.pct_list = opts.pct;
 R.notes = [
@@ -227,6 +232,9 @@ R.notes = [
     "Envelope over " + n_mp + " mode pairs: at each gain the largest exceedance (bounds any mode mix)"
     "Percentiles are conservative by up to " + compose("%.3g", R.bias_dB) + " dB (grid rounding); between grid angles the interpolation can fall one bin low (red team B2)"
     "Not covered: persistence, volume locks and per-volume statistics (use nexrad_asr11_mag_rev1 time series)"];
+if opts.interp == "upper" || opts.el_round_deg > 0
+    R.notes(end + 1) = "Angle cells (interp ""upper"" or el_round_deg): each pair gets its cell's upper envelope, never below the unrounded quantile-interpolated value";
+end
 end
 
 % =========================================================================
@@ -235,7 +243,7 @@ function out = run_chunk(sd_h, keys, mem, light, gl, heavy_r, L_light, Wk, dg, o
 pr = [];
 out = cell(size(keys, 1), 1);
 for j = 1:size(keys, 1)
-    [ph, k0h, gmh, pr] = slices_at(sd_h, keys(j, 1), keys(j, 2), opts.interp, pr);
+    [ph, k0h, gmh, pr] = slices_cell(sd_h, keys(j, :), opts.interp, pr);
     out{j} = run_group(ph, k0h, gmh, mem{j}, light, gl, heavy_r, L_light, Wk, dg, opts);
 end
 end
@@ -338,6 +346,82 @@ n = numel(sd.tilt)*(1 + sd.has_edge);
 end
 
 % -------------------------------------------------------------------------
+function [lo, hi] = angle_cell(el, sd, opts)
+% Cell [lo, hi] whose upper envelope each angle gets: the angle itself
+% (lo = hi = el), the rounding cell of opts.el_round_deg, or, for "upper",
+% the two neighboring grid elevations (lo = hi on a node).
+lo = el;
+hi = el;
+table = sd.sector_deg == 360 && opts.interp ~= "exact";
+if opts.el_round_deg > 0
+    r = opts.el_round_deg;
+    lo = floor(el/r + 1e-9)*r;
+    hi = lo + r;
+    on = abs(el - lo) <= 1e-9;
+    lo(on) = el(on);
+    hi(on) = el(on);
+elseif opts.interp == "upper" && table
+    i = discretize(el, sd.grid);
+    i(isnan(i)) = numel(sd.grid) - 1;            % el at the last node
+    lo = sd.grid(i);
+    hi = sd.grid(i + 1);
+    lo = lo(:);
+    hi = hi(:);
+    on_lo = abs(el - lo) <= 1e-9;
+    on_hi = abs(el - hi) <= 1e-9;
+    hi(on_lo) = lo(on_lo);
+    lo(on_hi) = hi(on_hi);
+end
+if table
+    lim = sd.grid([1 end]);
+else
+    lim = [-90 90];
+end
+lo = min(max(lo, lim(1)), lim(2));
+hi = min(max(hi, lim(1)), lim(2));
+end
+
+% -------------------------------------------------------------------------
+function [p, k0, gmax, pr] = slices_cell(sd, key, how, pr)
+% Slices for a key [lo, hi, brg]: at the angle itself when lo = hi;
+% otherwise the upper envelope (smallest CDF, column by column) over lo,
+% hi and every grid elevation between them.
+if how == "upper"
+    how = "quantile";                            % angles below are nodes or cell ends
+end
+if abs(key(2) - key(1)) <= 1e-12
+    [p, k0, gmax, pr] = slices_at(sd, key(1), key(3), how, pr);
+    return
+end
+c = key(1);
+if isfield(sd, "grid") && ~isempty(sd.grid)
+    c = [c; sd.grid(sd.grid > key(1) + 1e-9 & sd.grid < key(2) - 1e-9)];
+end
+c = [c; key(2)];
+P = cell(numel(c), 1);
+K = zeros(numel(c), 1);
+for i = 1:numel(c)
+    [P{i}, K(i), g_i, pr] = slices_at(sd, c(i), key(3), how, pr);
+    if i == 1
+        gmax = g_i;
+    else
+        gmax = max(gmax, g_i);
+    end
+end
+k0 = min(K);
+n = max(K + cellfun(@(x) size(x, 1), P)) - k0;
+F = ones(n, size(P{1}, 2));
+for i = 1:numel(c)
+    Fi = ones(n, size(P{i}, 2));
+    r = K(i) - k0 + (1:size(P{i}, 1));
+    Fi(1:r(1) - 1, :) = 0;
+    Fi(r, :) = cumsum(P{i}, 1);
+    F = min(F, Fi);
+end
+p = max(diff([zeros(1, size(F, 2)); F], 1, 1), 0);
+end
+
+% -------------------------------------------------------------------------
 function [p, k0, gmax, pr] = slices_at(sd, el, brg, how, pr)
 % Distributions of every slice column at elevation el (bins by columns,
 % double), the bin index k0 of row 1, and each column's largest gain
@@ -388,12 +472,8 @@ k0 = sd.k0;
 gmax = gmax_at(sd.G, sd.grid, el);
 [i, a] = bracket(sd.grid, el);
 n_tilt = size(sd.P, 3);
-if how == "nearest" || a == 0 || a == 1
-    if how == "nearest"
-        i = i + (a >= 0.5);
-    else
-        i = i + a;
-    end
+if a == 0 || a == 1
+    i = i + a;
     p = double(reshape(sd.P(:, i, :), [], n_tilt));
     return
 end
@@ -593,8 +673,11 @@ if ~isempty(extra)
     error("mag_pair:unknownOption", "Unknown option(s): %s.", strjoin(extra, ", "));
 end
 opts.interp = string(opts.interp);
-if ~ismember(opts.interp, ["quantile", "nearest", "exact"])
-    error("mag_pair:badInterp", "opts.interp must be ""quantile"", ""nearest"" or ""exact"".");
+if opts.interp == "nearest"
+    error("mag_pair:nearestRemoved", "opts.interp = ""nearest"" could be 0.5 dB low (review R4); use ""upper"".");
+end
+if ~ismember(opts.interp, ["quantile", "upper", "exact"])
+    error("mag_pair:badInterp", "opts.interp must be ""quantile"", ""upper"" or ""exact"".");
 end
 opts.conv_method = string(opts.conv_method);
 if ~ismember(opts.conv_method, ["fft", "direct"])

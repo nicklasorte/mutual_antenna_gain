@@ -21,7 +21,7 @@ tc.TestData.Ta = gain_dist_table_rev1(o.sys_asr11.tx, o.sys_asr11.scan, ...
     struct("name", "ASR-11", "el_grid_deg", grid));
 tc.TestData.Tn = gain_dist_table_rev1(o.sys_nexrad.tx, scan_n, ...
     struct("name", "WSR-88D", "mode_names", "VCP 212 SAILSx3 AVSET 6.4", "el_grid_deg", grid));
-[scans, names] = nexrad_mode_scans_rev1();
+[scans, names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
 tc.TestData.Tn_all = gain_dist_table_rev1(o.sys_nexrad.tx, scans, ...
     struct("name", "WSR-88D", "mode_names", names, "el_grid_deg", -0.1:0.05:0.1));
 tc.TestData.Ta_small = gain_dist_table_rev1(o.sys_asr11.tx, o.sys_asr11.scan, ...
@@ -76,13 +76,53 @@ verifyLessThanOrEqual(tc, got, ref + tol + R.bias_dB);
 verifyGreaterThanOrEqual(tc, got, ref - tol);
 end
 
+function testAvsetTerminationsCloseEnvelopeGap(tc)
+% Review R3: an AVSET termination above 6.4 deg gives the cuts just above
+% 6.4 deg more time than any of the 74 Rev 5 modes; near 7.25 deg the
+% 74-mode envelope was 2.6 dB low at 99.9%. The default mode set now holds
+% every termination.
+[s_all, n_all] = nexrad_mode_scans_rev1();
+[~, n_74] = nexrad_mode_scans_rev1("lowest");
+verifyEqual(tc, numel(n_74), 74);
+verifyTrue(tc, all(ismember(n_74, n_all)));
+verifyTrue(tc, ismember("VCP 12 AVSET 8.0", n_all));
+d = tc.TestData;
+g = [7.2 7.25 7.3];
+T_all = gain_dist_table_rev1(d.sys_n.tx, s_all, struct("mode_names", n_all, "el_grid_deg", g));
+Ta = gain_dist_table_rev1(d.sys_a.tx, d.sys_a.scan, struct("name", "ASR-11", "el_grid_deg", -7.3:0.05:-7.2));
+R_all = mag_pair_cdf_rev1(Ta, T_all, -7.25, 7.25, struct("pct", 99.9));
+R_74 = mag_pair_cdf_rev1(Ta, T_all, -7.25, 7.25, struct("pct", 99.9, "rx_modes", n_74));
+verifyGreaterThan(tc, R_all.pct.p99_9, R_74.pct.p99_9 + 1);
+verifyFalse(tc, contains(R_all.worst_mode, "AVSET 6.4") || ~contains(R_all.worst_mode, "AVSET"));
+end
+
 function testNodeIsExactTable(tc)
 % On a node the pair CDF uses the stored distributions directly, so
-% "quantile" and "nearest" agree.
+% "quantile" and "upper" agree.
 d = tc.TestData;
 a = mag_pair_cdf_rev1(d.Ta, d.Tn, 1.0, 0.5);
-b = mag_pair_cdf_rev1(d.Ta, d.Tn, 1.0, 0.5, struct("interp", "nearest"));
+b = mag_pair_cdf_rev1(d.Ta, d.Tn, 1.0, 0.5, struct("interp", "upper"));
 verifyEqual(tc, a.pct, b.pct);
+end
+
+function testUpperAndRoundingNeverBelowQuantile(tc)
+% Review R4: "nearest" and plain rounding came out low. "upper" and the
+% angle cells of el_round_deg take an upper envelope, so every percentile
+% is at least the unrounded quantile-interpolated value, and every pair in
+% a cell gets the same result.
+d = tc.TestData;
+e = (0.3:0.0137:1.7)';
+q = mag_pair_cdf_rev1(d.Tn, d.Ta, e, 1.0 + 0*e);
+for o = {struct("interp", "upper"), struct("el_round_deg", 0.01), struct("el_round_deg", 0.1), ...
+        struct("el_round_deg", 0.1, "interp", "upper")}
+    r = mag_pair_cdf_rev1(d.Tn, d.Ta, e, 1.0 + 0*e, o{1});
+    verifyGreaterThanOrEqual(tc, r.pct{:, 3:end - 1}, q.pct{:, 3:end - 1} - 1e-9, jsonencode(o{1}));
+    verifyEqual(tc, r.pct.el_tx_deg, e);
+end
+% Same cell, same result.
+r = mag_pair_cdf_rev1(d.Tn, d.Ta, [0.712; 0.788; 0.75], [1; 1; 1], struct("el_round_deg", 0.1));
+verifyEqual(tc, r.pct{1, 3:end}, r.pct{2, 3:end});
+verifyError(tc, @() mag_pair_cdf_rev1(d.Tn, d.Ta, 0.5, 1, struct("interp", "nearest")), "mag_pair:nearestRemoved");
 end
 
 function testInterpolationError(tc)
@@ -189,15 +229,22 @@ for i = 1:numel(et)
 end
 end
 
-function testRoundingEqualsRoundedInput(tc)
+function testRoundingCellsMatchCellEnds(tc)
+% Angles on the cell grid are used as they are; off-grid angles get the
+% larger of their two cell ends (no grid node lies inside a 0.01 deg cell
+% of the 0.05 deg table), and the table reports the angles given.
 d = tc.TestData;
 [et, er] = batch_pairs();
-et = et + 0.003;                                 % off the 0.01 grid
-er = er - 0.004;
+et = round(et/0.01)*0.01;
+er = round(er/0.01)*0.01;
+R0 = mag_pair_cdf_rev1(d.Tn, d.Ta, et, er);
 R1 = mag_pair_cdf_rev1(d.Tn, d.Ta, et, er, struct("el_round_deg", 0.01));
-R0 = mag_pair_cdf_rev1(d.Tn, d.Ta, round(et/0.01)*0.01, round(er/0.01)*0.01);
-verifyEqual(tc, R1.pct{:, 3:end}, R0.pct{:, 3:end});
-verifyEqual(tc, R1.pct.el_tx_deg, et);           % the table reports the angles given
+verifyEqual(tc, R1.pct{:, 3:end}, R0.pct{:, 3:end}, "AbsTol", 1e-9);
+e2 = et + 0.003;                                 % off the 0.01 grid, inside the cell [et, et + 0.01]
+R2 = mag_pair_cdf_rev1(d.Tn, d.Ta, e2, er, struct("el_round_deg", 0.01));
+Rhi = mag_pair_cdf_rev1(d.Tn, d.Ta, min(et + 0.01, 2.5), er);
+verifyGreaterThanOrEqual(tc, R2.pct{:, 3:end - 1}, max(R0.pct{:, 3:end - 1}, Rhi.pct{:, 3:end - 1}) - 1e-9);
+verifyEqual(tc, R2.pct.el_tx_deg, e2);
 end
 
 % =========================================================================

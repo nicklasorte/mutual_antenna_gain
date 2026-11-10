@@ -25,7 +25,7 @@ end
 % =========================================================================
 function testOriginalModelSweepRows(tc)
 % Paper baseline, a short clear-air mode, and the Rev 5 worst mode.
-c = vcp_mode_cases_rev1();
+c = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
 labels = string(cellfun(@(x) x.label, c, "UniformOutput", false));
 want = ["Paper: F.1245, 3 rpm, horizon", "VCP 35", "VCP 212 SAILSx3 AVSET 6.4"];
 base = struct("seed", 20261105, "n_samples", 5e6, "duration_s", 3600, "n_trials", 4);
@@ -54,7 +54,7 @@ end
 function testTwoPartModelReference(tc)
 ref = tc.TestData.ref;
 o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
-[scans, names] = nexrad_mode_scans_rev1();
+[scans, names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
 grid = -1:0.05:3;
 Tn = gain_dist_table_rev1(o.sys_nexrad.tx, scans, struct("name", "WSR-88D", ...
     "mode_names", names, "el_grid_deg", grid));

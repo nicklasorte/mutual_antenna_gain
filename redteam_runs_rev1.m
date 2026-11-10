@@ -70,8 +70,8 @@ ob = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60,
     "cdf_method", "exact"));
 ctx.sys_n = ob.sys_nexrad;
 ctx.sys_a = ob.sys_asr11;
-[ctx.scans, ctx.names] = nexrad_mode_scans_rev1();
-c = vcp_mode_cases_rev1();
+[ctx.scans, ctx.names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
+c = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
 ctx.cases = c(2:end);
 ctx.k_worst = find(ctx.names == "VCP 212 SAILSx3 AVSET 6.4", 1);
 ctx.pct = [50 90 99 99.9 99.99 99.999];
@@ -1047,7 +1047,7 @@ if any(T.quick == 1)
     warning("redteam:quickRows", "Register holds quick (code-path) rows: %s.", strjoin(T.id(T.quick == 1), ", "));
 end
 order = ["A1" "A2" "A3" "A4" "B1" "B2" "B3" "B4" "B5" "C1" "C2" "C3" "C4" "C5" "D1" "D2" "D3" "D4" ...
-    "E1" "E2" "F1" "F2" "F3" "NOAA" "X1" "X2" "X3" "X4" "L2" "G1" "G2" "G3" "G4"];
+    "E1" "E2" "F1" "F2" "F3" "NOAA" "X1" "X2" "X3" "X4" "L2" "R1" "R2" "R3" "R4" "R5" "R6" "G1" "G2" "G3" "G4"];
 [~, o] = ismember(T.id, order);
 o(o == 0) = numel(order) + 1;
 [~, s] = sort(o);
@@ -1070,7 +1070,13 @@ c = {
 "X2", "Closed-form slices handle any sector", "Found by F1: 10 of 500 random cases crashed (sector inside one segment of a coarse table)", "Runs and matches the grid", "Fixed", "refine_cells built a row instead of a column when a slice spanned one pattern cell (repelem of a scalar). Fixed; the F1 rerun has no crash.", "test_gain_slice_rev1.m (testSectorInsideOnePatternSegment)", "High", "None"
 "X3", "The stated grid bias bounds the exact CDF error", "Found by F1: 3 cases above the old 2-bin bound by 0.004 to 0.011 dB", "Error inside the stated bias", "Fixed", "Closed-form slices round up twice (each cell's larger end gain, then the bin edge), so the bound is 2 bins per antenna: mag_exact_cdf_rev1 bias_dB 0.2 dB (was 0.1), mag_pair_cdf_rev1 0.3 dB (was 0.2). Values unchanged; only the stated bound. F1 rerun: 0 outside.", "docs/figures/redteam/F1_rev1.csv", "Low", "None"
 "X4", "The C# tool applies each antenna's own fallback model", "Code reading for C3 (CouplingCalculations.cs)", "Antenna 2 uses otherAntModel2", "Finding", "CalculateWorstCaseCoupling_dBi passes otherAntModel1 for antenna 2, in the live and the commented-out versions. It matters only when the two antennas use different fallback models below the CSC^2 start angle.", "CouplingCalculations.cs (project)", "Low", "Report to the tool owner."
-"L2", "Layer 2: independent review", "A separate agent that has not seen the plan or the code history tries to break the results", "Findings fixed or reported", "Pending", "Not run: needs your go-ahead (plan decision 4).", "-", "Medium", "Approve or decline decision 4."
+"L2", "Layer 2: independent review", "A separate agent that had not seen the plan, the register or the code history tried to break the results (2026-11-10)", "Findings fixed or reported", "Done", "Four of seven claims broken (R1 to R6 below); exact slices, bias at nodes, exact vs Monte Carlo, FFT vs direct and random mode vs time series held. R1, R3 and R4 fixed; R2 is C1.", "-", "Info", "Human review by NOAA and FAA subject-matter experts (layer 3)."
+"R1", "Bidirectional sector scans are modeled correctly in the time series", "Review: sample the scan clock and the engine time series for a 30 deg bidirectional sector with 0.5 s turnaround", "Time series visits the sector as random mode assumes", "Fixed", "Each cut restarted the back-and-forth sweep at the same point, so part of the sector was never visited: per-volume maxima 13 to 39 dB low; engine time series 10 dB low at 99% with the path 10 deg off center. Now the sweep phase runs on across cuts and volumes. CDFs (random, exact) were not affected.", "test_sectors_rev1.m (testBidirectionalClockSweepsWholeSector, testEngineBidirectionalOddPassesMatchExact)", "High", "Rerun any bidirectional-sector time series made before this fix."
+"R2", "Inputs are conservative enough", "Review: ROC specification vs NSSL measured WSR-88D pattern", "Protection default is conservative", "Finding", "Same as C1: the specification gives 10 to 15 dB more at 50 to 99%. Plan decision 7.", "docs/figures/redteam/C1_rev1.csv", "High", "Decide the protection default (decision 7)."
+"R3", "The worst-mode envelope bounds any mix of scan modes", "Review: AVSET terminations above 6.4 deg against the 74-mode envelope, takeoff angles 6 to 10 deg", "Envelope at or above every operational mode", "Fixed", "A termination above 6.4 deg gives the cuts just above 6.4 deg more time than any of the 74 modes: envelope up to 4.35 dB low at 99.9% (2,000 random pairs; every pair with a WSR-88D takeoff angle above 6 deg changed, none below 5.5 deg by more than 0.55 dB). The default mode set now holds every termination: 216 modes; pair time about 2.0 ms against 1.75 ms. The 74-mode set stays available as ""lowest"" for the Rev 5 reproductions.", "test_mag_lookup_rev1.m (testAvsetTerminationsCloseEnvelopeGap)", "Medium", "Use the default (216-mode) set for Rev 6."
+"R4", "Nearest-node and rounded angles are conservative", "Review: interp ""nearest"" and el_round_deg 0.01 and 0.1 against exact slices", "Never below the stated bias", "Fixed", "Nearest was up to 0.50 dB low, rounding to 0.1 deg up to 0.85 dB low. ""nearest"" is replaced by ""upper"" (larger of the two neighbors at each probability level); el_round_deg now gives each cell's upper envelope. Both are never below the unrounded quantile value.", "test_mag_lookup_rev1.m (testUpperAndRoundingNeverBelowQuantile)", "Medium", "None"
+"R5", "Separable sector slices report the exact peak gain", "Review: brute-force peak of separable sector slices", "Doc matches behavior", "Open", "h.gmax is a grid maximum for separable sector slices, up to 0.007 dB below the true peak; the help says exact.", "gain_slice_rev1.m", "Low", "Fix the help text or add the on-path gain."
+"R6", "Input validation", "Review: duplicate percentiles, empty pair list, angle 1e-13 past the grid", "Clear errors", "Open", "Cryptic errors in all three; no silent wrong answer.", "mag_pair_cdf_rev1.m", "Low", "Validate pct uniqueness and empty input; align the edge tolerance."
 "G1", "Scope: aggregate interference", "None possible", "Stated in the report", "Scope limit", "One ATC radar per WSR-88D; no aggregate from several ATC radars.", "-", "Info", "State in Rev 6."
 "G2", "Scope: polarization and dual-pol products", "None possible", "Stated in the report", "Scope limit", "No polarization mismatch and no dual-polarization product effects.", "-", "Info", "State in Rev 6."
 "G3", "Scope: pulse-level coupling and FDR", "None possible", "Stated in the report", "Scope limit", "Antenna coupling only; no pulse-level coupling or frequency-dependent rejection.", "-", "Info", "State in Rev 6."

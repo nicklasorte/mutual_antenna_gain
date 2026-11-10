@@ -83,6 +83,45 @@ q = prctile(r.g12_dBi, [90 99]);
 verifyLessThanOrEqual(tc, abs(q(:) - x.pct12.gain_dBi), 0.5);
 end
 
+function testBidirectionalClockSweepsWholeSector(tc)
+% Review R1: the wrapper's scan clock restarted the back-and-forth sweep at
+% a fixed point every cut, so part of the sector was never visited. Now
+% the beam reaches both edges and dwells at each for the random-mode share.
+o = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "cdf_method", "exact", ...
+    "nexrad_sector_deg", 30, "nexrad_sweep_mode", "bidirectional", "nexrad_turnaround_s", 0.5);
+w = nexrad_asr11_mag_rev1(o);
+spec = w.scan_max.clock_spec;
+pass = spec.sec_n./abs(spec.rate_n) + spec.turn_n;
+share = spec.turn_n*numel(pass)/2/sum(pass);     % time at one edge, per edge
+t = (0:0.005:600)';
+for j = 1:4
+    C = scan_clock_rev1(spec, 1, j, 600);
+    st = scan_clock_state_rev1(C, t);
+    off = wrapTo180(st.mech_az - spec.center_n);
+    verifyLessThanOrEqual(tc, min(off), -15 + 1e-6, sprintf("trial %d near edge", j));
+    verifyGreaterThanOrEqual(tc, max(off), 15 - 1e-6, sprintf("trial %d far edge", j));
+    verifyEqual(tc, mean(off <= -15 + 1e-6), share, "RelTol", 0.15);
+    verifyEqual(tc, mean(off >= 15 - 1e-6), share, "RelTol", 0.15);
+    h = histcounts(off(abs(off) < 14), -14:7:14);
+    verifyEqual(tc, h/mean(h), ones(1, 4), "AbsTol", 0.1);
+end
+end
+
+function testEngineBidirectionalOddPassesMatchExact(tc)
+% Review R1 in the engine: with one pass per step (n_rev = 1) the time
+% series left part of the sector unvisited. With the path 10 deg off the
+% sector center the old code missed the exact CDF by 3.4 dB at the median
+% and 10 dB at 99%; it must now agree.
+o = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "cdf_method", "exact", ...
+    "nexrad_sector_deg", 30, "nexrad_sector_center_deg", 10, "nexrad_sweep_mode", "bidirectional", ...
+    "nexrad_turnaround_s", 0.5);
+w = nexrad_asr11_mag_rev1(o);
+r = radar_mutual_gain_cdf_rev1(w.sys_nexrad, w.sys_asr11, struct("seed", 3, "mode", "time_series", ...
+    "duration_s", 900, "n_trials", 4, "pct", [50 90 99]));
+x = mag_exact_cdf_rev1(w.sys_nexrad, w.sys_asr11, struct("pct", [50 90 99]));
+verifyLessThanOrEqual(tc, abs(r.pct12.gain_dBi - x.pct12.gain_dBi), 0.5);
+end
+
 function testTwoPartSectorMatchesExact(tc)
 % A sector table stores no slices; mag_pair_cdf_rev1 makes them from the
 % bearing. Receiver = WSR-88D sweeping a 90 deg bidirectional sector with

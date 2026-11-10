@@ -137,7 +137,7 @@ function testExactEnvelopeMatchesRev5(tc)
 % envelope (docs/figures/mode_envelope_rev5.csv: 20.156, 43.949, 45.492,
 % 68.857 dBi), within the Rev 5 order-statistic half-widths (0.15, 0.09,
 % 0.002, 2.1 dB) plus the upward grid bias.
-c = vcp_mode_cases_rev1();
+c = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
 c = c(2:end);
 pct = [99 99.9 99.99 99.999];
 summ = cell(1, numel(c));

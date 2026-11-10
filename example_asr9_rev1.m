@@ -42,7 +42,7 @@ end
 asr9_base.atc_radar = "asr9";
 
 % ---- Sweep the 74 VCP modes for the ASR-9 (c9{1} is the paper baseline)
-c9 = vcp_mode_cases_rev1();
+c9 = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
 c9 = c9(2:end);
 env_pct9 = [99 99.9 99.99 99.999];
 n9 = numel(c9);

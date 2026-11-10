@@ -1,11 +1,14 @@
-function [scans, names] = nexrad_mode_scans_rev1()
+function [scans, names] = nexrad_mode_scans_rev1(avset)
 %NEXRAD_MODE_SCANS_REV1 Scan structs for every WSR-88D scan mode in the sweep.
 %   [scans, names] = nexrad_mode_scans_rev1() returns one nexrad_vcp_rev1
 %   scan struct per WSR-88D scan mode in vcp_mode_cases_rev1 (every VCP in
 %   operational Level II data, 2024-2026, with every option combination
-%   the RDA allows: 74 modes). Case 1 of vcp_mode_cases_rev1 (the working
+%   the RDA allows, with every AVSET termination). Case 1 of vcp_mode_cases_rev1 (the working
 %   paper's 3 rpm horizon scan with F.1245 patterns) is not a VCP and is
 %   left out.
+%
+%   [scans, names] = nexrad_mode_scans_rev1("lowest") returns the 74 modes
+%   of the Rev 5 study (AVSET at 6.4 deg only). See vcp_mode_cases_rev1.
 %
 %   scans  1-by-N cell array of scan structs, for gain_dist_table_rev1
 %   names  1-by-N string array of mode labels ("VCP 212 SAILSx3 AVSET 6.4")
@@ -16,7 +19,10 @@ function [scans, names] = nexrad_mode_scans_rev1()
 %
 %   See also vcp_mode_cases_rev1, nexrad_vcp_rev1, gain_dist_table_rev1.
 
-c = vcp_mode_cases_rev1();
+arguments
+    avset (1, 1) string = "all"
+end
+c = vcp_mode_cases_rev1(avset);
 c = c(2:end);                                   % c{1} is the paper's constant-rate case
 scans = cell(1, numel(c));
 names = strings(1, numel(c));

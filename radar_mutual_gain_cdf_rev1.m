@@ -391,8 +391,16 @@ switch scan.type
         if scan.sector_deg < 360 && scan.sweep_mode == "bidirectional"
             % Sector swept forward and back, with a dwell at each edge
             % (sector_sweep_rev1, the shared sweep law).
-            u = sector_sweep_rev1(tau - edges(step), scan.rate_deg_s(step), scan.sector_deg, ...
-                az0/360*scan.sector_deg, "bidirectional", scan.turnaround_s);
+            % The sweep phase (in passes, n_rev per step) runs on across
+            % steps and volumes (review R1: restarting it at every step
+            % left part of the sector unvisited for odd n_rev). Start
+            % phase az0/180: uniform over one forward-and-back cycle.
+            r_s = abs(scan.rate_deg_s(step));
+            pass = scan.sector_deg./r_s + scan.turnaround_s;
+            n_pass = [0; cumsum(scan.n_rev(:))];
+            vol = floor((t + t0)/t_cycle);
+            phi = az0/180 + vol*n_pass(end) + n_pass(step) + (tau - edges(step))./pass;
+            u = sector_sweep_rev1(phi.*pass, r_s, scan.sector_deg, 0, "bidirectional", scan.turnaround_s);
             st.mech_az = sector_az(scan, u, sign(scan.rate_deg_s(step)));
         elseif scan.sector_deg < 360
             % Sector: position within the sweep, from the leading edge.
