@@ -41,7 +41,7 @@ for i = 1:n
     % envelope (mag_mode_summary_rev1) and drop the samples, except for
     % the paper baseline and VCP 215, which the figures plot. The worst
     % mode is rerun after the sweep with the same seed.
-    summ{i} = mag_mode_summary_rev1(r.cdf.g21_dBi, env_pct);
+    summ{i} = mag_mode_summary_rev1(r.cdf, env_pct);
     r.cdf.g12_dBi = [];
     if i == 1 || c{i}.label == "VCP 215"
         r.cdf.g21_dBi = single(r.cdf.g21_dBi);

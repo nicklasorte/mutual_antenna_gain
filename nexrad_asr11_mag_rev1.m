@@ -43,6 +43,18 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       "per_rev" (new offset every revolution)
 %     .el_path_deg      path elevation at both ends (0: horizontal
 %                       line-of-sight path, location-agnostic geometry)
+%     .el_nexrad_deg    takeoff angle at the NEXRAD: elevation of the ATC
+%                       radar seen from the NEXRAD, deg (default
+%                       el_path_deg)
+%     .el_atc_deg       takeoff angle at the ATC radar: elevation of the
+%                       NEXRAD seen from it, deg (default el_path_deg). Both
+%                       map to the "Takeoff Angle (deg)" columns of the
+%                       2.7 GHz RFS tool.
+%     .cdf_method       "monte_carlo" (default, random-mode samples) |
+%                       "exact" (mag_exact_cdf_rev1: no sampling noise,
+%                       percentiles conservative by at most 0.1 dB;
+%                       out.cdf.g12_dBi and g21_dBi are empty and
+%                       out.cdf.dist21 holds the distribution)
 %     .nexrad_sector_deg  NEXRAD azimuth sector, centered on the ASR-11
 %                       (360: full rotation, the operational VCPs). Below
 %                       360, each cut sweeps the sector once: a bounding
@@ -79,7 +91,8 @@ function out = nexrad_asr11_mag_rev1(opts)
 %
 %   out struct:
 %     .cdf              radar_mutual_gain_cdf_rev1 output (random mode),
-%                       including cdf_array21: [percent 0-100, MAG dBi]
+%                       including cdf_array21: [percent 0-100, MAG dBi];
+%                       mag_exact_cdf_rev1 output when cdf_method = "exact"
 %     .ref_levels       table of main-beam and sidelobe combinations on the
 %                       link path: combination, mag_dBi, nexrad_gain_dBi,
 %                       asr11_gain_dBi, time_exceeded_pct (time-weighted CDF),
@@ -163,12 +176,17 @@ A = assumptions(opts.atc_radar);
 % ---- 1. Time-weighted CDF (M.2069-0 random mode). The constant-rate
 %      case has rates in a 6:25 ratio; random mode assumes the rates drift
 %      (drive tolerance), so the commensurate-rate warning is expected.
-o = struct("seed", opts.seed, "mode", "random", "n_samples", opts.n_samples, ...
-    "el12_deg", opts.el_path_deg, "el21_deg", opts.el_path_deg, ...
-    "pct", opts.pct, "parallel_flag", opts.parallel_flag, "cdf_pct", opts.cdf_pct);
 w = warning("off", "radar_coupling:commensurateRates");
 cleanup = onCleanup(@() warning(w));
-cdf = radar_mutual_gain_cdf_rev1(sys_n, sys_a, o);
+if opts.cdf_method == "exact"
+    cdf = mag_exact_cdf_rev1(sys_n, sys_a, struct("el12_deg", opts.el_nexrad_deg, ...
+        "el21_deg", opts.el_atc_deg, "pct", opts.pct, "cdf_pct", opts.cdf_pct));
+else
+    o = struct("seed", opts.seed, "mode", "random", "n_samples", opts.n_samples, ...
+        "el12_deg", opts.el_nexrad_deg, "el21_deg", opts.el_atc_deg, ...
+        "pct", opts.pct, "parallel_flag", opts.parallel_flag, "cdf_pct", opts.cdf_pct);
+    cdf = radar_mutual_gain_cdf_rev1(sys_n, sys_a, o);
+end
 clear cleanup
 
 % ---- 2. Time series and maximum MAG per scan iteration.
@@ -211,11 +229,10 @@ function R = ref_levels(sys_n, sys_a, opts, cdf, S)
 %   back lobe    gain with the beam azimuth 180 deg off the path
 pn = antenna_prepare_rev1(sys_n.tx);
 pa = antenna_prepare_rev1(sys_a.tx);
-e = opts.el_path_deg;
 x = (0:0.01:180)';
 [~, el_n] = nexrad_cuts(sys_n.scan);
-gn = antenna_gain_rev1(pn, 0, e, state(-x, min(el_n) + 0*x));
-ga = antenna_gain_rev1(pa, 180, e, state(180 - x, sys_a.scan.tilt_deg + 0*x));
+gn = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(-x, min(el_n) + 0*x));
+ga = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - x, sys_a.scan.tilt_deg + 0*x));
 % [main, near SL, back]; 2 beamwidths = 4 x the 3 dB half-width of the cut
 lev = @(g) [g(1), max(g(x >= 4*x(find(g <= g(1) - 3, 1)))), g(end)];
 Ln = lev(gn);
@@ -229,7 +246,7 @@ name = ["Main beam to main beam"
 g = [Ln(1) + La(1); Ln(1) + La(2); Ln(1) + La(3); La(1) + Ln(2); La(1) + Ln(3)];
 g_n = [Ln(1); Ln(1); Ln(1); Ln(2); Ln(3)];
 g_a = [La(1); La(2); La(3); La(1); La(1)];
-exceed = arrayfun(@(v) 100*mean(cdf.g21_dBi >= v), g);
+exceed = exceed_pct(cdf, g);
 Rv = S.asr_rev(S.asr_rev.complete, :);
 % The time-series peak can fall up to 0.2 dB short of the true peak (ASR-11
 % beam moves 0.15 deg per 0.002 s step); count a level reached within that.
@@ -250,13 +267,13 @@ q = cdf.pct21(cdf.pct21.pct >= 99, :);
 name = ["Peak gains, main beam to main beam"; "Main beam to main beam on the path"; ...
     "Largest MAG in the time series"; compose("%g%% time-weighted MAG", q.pct)];
 g = [g_pk; ref.mag_dBi(1); max(S.nexrad_volume.max_g21_dBi); q.gain_dBi];
-exceed = arrayfun(@(v) 100*mean(cdf.g21_dBi >= v), g);
+exceed = exceed_pct(cdf, g);
 Rv = S.asr_rev(S.asr_rev.complete, :);
 rev_pct = arrayfun(@(v) 100*mean(Rv.max_g21_dBi >= v - 0.2), g);
 T = table(name, g, g - g_pk, exceed, rev_pct, 'VariableNames', ["mag_choice", ...
     "mag_dBi", "delta_vs_peak_mbmb_dB", "time_exceeded_pct", "asr_rev_reached_pct"]);
-T.Properties.Description = sprintf("el_path_deg = %g; NEXRAD lowest cut %.1f deg", ...
-    opts.el_path_deg, min(sys_n.scan.tilt_deg));
+T.Properties.Description = sprintf("takeoff angles: NEXRAD %g deg, ATC %g deg; NEXRAD lowest cut %.1f deg", ...
+    opts.el_nexrad_deg, opts.el_atc_deg, min(sys_n.scan.tilt_deg));
 end
 
 % -------------------------------------------------------------------------
@@ -596,15 +613,16 @@ for jj = 1:opts.n_trials
 
     % Geometry as in radar_mutual_gain_cdf_rev1: radar 1 = NEXRAD, the
     % ASR-11 at 0 deg from it; the NEXRAD at 180 deg from the ASR-11.
-    e = opts.el_path_deg;
-    g12 = antenna_gain_rev1(pn.tx, 0, e, st_n) + antenna_gain_rev1(pa.rx, 180, e, st_a);
-    gA = antenna_gain_rev1(pa.tx, 180, e, st_a);     % ASR-11 transmit gain toward the NEXRAD
-    gN = antenna_gain_rev1(pn.rx, 0, e, st_n);       % NEXRAD receive gain toward the ASR-11
+    e_n = opts.el_nexrad_deg;                      % takeoff angle at the NEXRAD
+    e_a = opts.el_atc_deg;                         % takeoff angle at the ATC radar
+    g12 = antenna_gain_rev1(pn.tx, 0, e_n, st_n) + antenna_gain_rev1(pa.rx, 180, e_a, st_a);
+    gA = antenna_gain_rev1(pa.tx, 180, e_a, st_a);   % ASR-11 transmit gain toward the NEXRAD
+    gN = antenna_gain_rev1(pn.rx, 0, e_n, st_n);     % NEXRAD receive gain toward the ASR-11
     g21 = gA + gN;
     h_counts = h_counts + histcounts(g21, h_edges)';
     offA = wrapTo180(180 - st_a.mech_az);            % ASR-11 beam azimuth off the path
     offN = wrapTo180(0 - st_n.mech_az);              % NEXRAD beam azimuth off the path
-    rN = region_of(offaxis_nexrad(offN, st_n.tilt, e), E.nexrad);
+    rN = region_of(offaxis_nexrad(offN, st_n.tilt, e_n), E.nexrad);
     rA = region_of(abs(offA), E.asr11);
     k = sub2ind([4 4], rN, rA);
     lobe_n = lobe_n + reshape(accumarray(k, 1, [16 1]), 4, 4);
@@ -692,7 +710,7 @@ function P = plateau_check(pn, pa, el_n, t_vol, t_rev, Rv, opts)
 % about 30 dBi, the ASR-11 main beam on NEXRAD sidelobes also reaches the
 % level, so the hand count is a lower bound there.
 z = zeros(1, 1);
-g_floor = antenna_gain_rev1(pa, 180, opts.el_path_deg, ...
+g_floor = antenna_gain_rev1(pa, 180, opts.el_atc_deg, ...
     struct("mech_az", z, "tilt", z, "steer_az", z, "steer_el", z));   % ASR-11 beam pointing away
 el = unique(el_n);
 n_el = numel(el);
@@ -700,7 +718,7 @@ n_el = numel(el);
 Rc = Rv(Rv.complete, :);
 for i = 1:n_el
     st = struct("mech_az", 0, "tilt", el(i), "steer_az", 0, "steer_el", 0);
-    g_n(i) = antenna_gain_rev1(pn, 0, opts.el_path_deg, st);
+    g_n(i) = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, st);
     lev(i) = g_n(i) + g_floor;
     n_cut(i) = sum(el_n == el(i));
 end
@@ -712,8 +730,8 @@ end
 % Keep only levels above ASR-11 main beam + NEXRAD back lobe, which every
 % revolution reaches; at or below it the hand count does not apply.
 z1 = struct("mech_az", 180, "tilt", el_n(1), "steer_az", 0, "steer_el", 0);
-g_base = antenna_gain_rev1(pa, 180, opts.el_path_deg, struct("mech_az", 180, "tilt", 0, ...
-    "steer_az", 0, "steer_el", 0)) + antenna_gain_rev1(pn, 0, opts.el_path_deg, z1);
+g_base = antenna_gain_rev1(pa, 180, opts.el_atc_deg, struct("mech_az", 180, "tilt", 0, ...
+    "steer_az", 0, "steer_el", 0)) + antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, z1);
 keep = lev > g_base + 1e-9;
 [el, n_cut, g_n, lev, pred, sim] = deal(el(keep), n_cut(keep), g_n(keep), lev(keep), pred(keep), sim(keep));
 n_el = numel(el);
@@ -740,7 +758,7 @@ function E = region_edges(pn, pa, opts)
 x = (0:0.001:180)';
 z = 0*x;
 gn = antenna_gain_rev1(pn, 0, 0, struct("mech_az", -x, "tilt", z, "steer_az", z, "steer_el", z));
-ga = antenna_gain_rev1(pa, 180, opts.el_path_deg, struct("mech_az", 180 - x, ...
+ga = antenna_gain_rev1(pa, 180, opts.el_atc_deg, struct("mech_az", 180 - x, ...
     "tilt", z + opts.asr_tilt_deg, "steer_az", z, "steer_el", z));
 E.nexrad = edges_of(x, gn, pn.region_sll_dB);
 E.asr11 = edges_of(x, ga, pa.region_sll_dB);
@@ -771,6 +789,19 @@ g = acosd(min(max(c, -1), 1));
 end
 
 % -------------------------------------------------------------------------
+function x = exceed_pct(cdf, v)
+% Percent of time the MAG is at or above each level v: from the samples
+% (Monte Carlo) or from the distribution (exact; gains rounded up to the
+% bin edge, so the share is an upper bound).
+if ~isempty(cdf.g21_dBi)
+    x = arrayfun(@(u) 100*mean(cdf.g21_dBi >= u), v);
+else
+    d = cdf.dist21;
+    x = arrayfun(@(u) 100*sum(d.pmf(d.gain_dBi >= u - 1e-9)), v);
+end
+end
+
+% -------------------------------------------------------------------------
 function L = lobe_pairs(sys_n, sys_a, opts, S)
 % Time share of each pair of regions, exact from the patterns: in random
 % mode the two beam azimuths are independent and uniform (the NEXRAD
@@ -778,7 +809,7 @@ function L = lobe_pairs(sys_n, sys_a, opts, S)
 pn = antenna_prepare_rev1(sys_n.rx);
 pa = antenna_prepare_rev1(sys_a.tx);
 E = S.region_edges;
-e = opts.el_path_deg;
+e = opts.el_nexrad_deg;
 [rate_n, el_n] = nexrad_cuts(sys_n.scan);
 w = (1./rate_n)/sum(1./rate_n);                 % cut time weights (sector cancels)
 sec = opts.nexrad_sector_deg;
@@ -794,7 +825,7 @@ for i = 1:numel(el_u)
     mN = max(mN, accumarray(r, gN, [4 1], @max, -Inf));
 end
 dA = (-180 + dz/2:dz:180)';                     % ASR-11 azimuth off the path
-gA = antenna_gain_rev1(pa, 180, e, state(180 - dA, sys_a.scan.tilt_deg + 0*dA));
+gA = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - dA, sys_a.scan.tilt_deg + 0*dA));
 rA = region_of(abs(dA), E.asr11);
 pA = accumarray(rA, 1, [4 1])/numel(dA);
 mA = accumarray(rA, gA, [4 1], @max, -Inf);
@@ -895,7 +926,8 @@ end
 d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_deg", Inf, ...
     "cd_rate_deg_s", [], "nexrad_pattern", "nssl_measured", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
-    "el_path_deg", 0, "nexrad_sector_deg", 360, "nexrad_back_dB", -55, ...
+    "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
+    "nexrad_sector_deg", 360, "nexrad_back_dB", -55, ...
     "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
@@ -905,6 +937,15 @@ for i = 1:numel(f)
     if ~isfield(opts, f{i}) || (isempty(opts.(f{i})) && f{i} ~= "cd_rate_deg_s")
         opts.(f{i}) = d.(f{i});
     end
+end
+if isnan(opts.el_nexrad_deg), opts.el_nexrad_deg = opts.el_path_deg; end
+if isnan(opts.el_atc_deg), opts.el_atc_deg = opts.el_path_deg; end
+if any(abs([opts.el_path_deg, opts.el_nexrad_deg, opts.el_atc_deg]) > 90)
+    error("radar_coupling:badElevation", "Path elevations and takeoff angles must lie in [-90, 90] deg.");
+end
+opts.cdf_method = string(opts.cdf_method);
+if ~ismember(opts.cdf_method, ["monte_carlo", "exact"])
+    error("radar_coupling:badCdfMethod", "opts.cdf_method must be ""monte_carlo"" or ""exact"".");
 end
 opts.nexrad_scan = string(opts.nexrad_scan);
 opts.nexrad_pattern = string(opts.nexrad_pattern);

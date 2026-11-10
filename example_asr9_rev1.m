@@ -55,7 +55,7 @@ for i9 = 1:n9
         o9.(f9{k9}) = c9{i9}.(f9{k9});
     end
     r9 = nexrad_asr11_mag_rev1(o9);
-    summ9{i9} = mag_mode_summary_rev1(r9.cdf.g21_dBi, env_pct9);
+    summ9{i9} = mag_mode_summary_rev1(r9.cdf, env_pct9);
     q9 = r9.cdf.pct21;
     R9 = r9.scan_max.asr_rev(r9.scan_max.asr_rev.complete, :);
     rows9{i9} = {string(c9{i9}.label), q9.gain_dBi(q9.pct == 99), q9.gain_dBi(q9.pct == 99.9), ...

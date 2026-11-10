@@ -11,7 +11,7 @@ This plan covers the two mutual antenna gain (MAG) models in the repository:
 
 Nothing in this plan is built yet, except one prototype that is labeled as such. Every baseline number was measured on 2026-11-10 in MATLAB R2025b on the Apple silicon Mac. Every target is an estimate until its work package is done.
 
-## Status, 2026-11-10 (branch `feature/exact-slices`)
+## Status, 2026-11-10 (steps 1 to 4)
 
 | Package | Status | Result |
 | --- | --- | --- |
@@ -21,6 +21,10 @@ Nothing in this plan is built yet, except one prototype that is labeled as such.
 | T2 Shift rule (separable) | Done in the kernel | Identical to the azimuth grid (same samples), binary search per slice |
 | T3 Part 2 | Partly done | `opts.interp = "exact"` added (33 ms per pair, within 0.1 dB of interpolation). Interpolation vectorized and percentile search vectorized: 4.5 ms per pair against 6.4 ms on main (1.4 times faster), identical results. The 2 ms target is not met |
 | K1 Shared scan clock | Moved to step 6 | Its only new consumer is the event library; moving it now would touch both pinned models for no gain yet |
+| O1 Exact CDF in the original model | Done | `mag_exact_cdf_rev1` and `nexrad_asr11_mag_rev1` option `cdf_method = "exact"`. CDF step 0.087 s against 1.09 s for 5 million samples (13 times faster); percentiles inside the Monte Carlo intervals or within the 0.1 dB round-up above them. Monte Carlo stays the default, so Rev 5 reproduces unchanged |
+| O2 Mode and sensitivity sweeps | Done | `mag_mode_summary_rev1` takes a distribution; `example_overrides.cdf_method = "exact"` runs the 74-mode sweep exactly. Exact envelope matches `mode_envelope_rev5.csv` within the Rev 5 intervals |
+| O5 Takeoff angle at each end | Done | `el_nexrad_deg`, `el_atc_deg` (default `el_path_deg`), used in the CDF, the time series, the reference levels, the plateau check and the lobe pairs |
+| Exceedance near plateaus | Finding | Rounding gains up moves mass that sits just below a level to above it. At the 45.49 dBi plateau the exact time share is 0.027% against 0.007% by Monte Carlo: an upper bound equal to the share at the level minus at most 0.1 dB. Where a time share at a plateau matters, call `mag_exact_cdf_rev1` with a finer `bin_dB` (the wrapper uses 0.05 dB) |
 | F2 Fault seeding | Done (first set) | `redteam_fault_seed_rev1`: 10 planted faults across both models. First run caught 9; the miss (time-series trials all starting at the same point of the scan cycle) got a new test, `timeSeriesTrialsStartAnywhereInScanCycle`. Rerun: 10 of 10 caught (`docs/figures/fault_seed_rev1.csv`) |
 
 Measured on 2026-11-10: WSR-88D table (74 modes, 21 tilts, 301 elevations) 2.0 s, down from 127 s; ASR-11 table 0.4 s, down from 15 s. Worked pair (2.0°/1.7°): every percentile unchanged except 99.9%, up one bin (43.55 to 43.60 dBi), as the conservative closed form allows.

@@ -14,6 +14,8 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | --- | --- |
 | Get the MAG CDF for two radars | `radar_mutual_gain_cdf_rev1(sys1, sys2, opts)` |
 | Run the WSR-88D and ASR-11 model for one VCP mode | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3))` |
+| Run the same model with an exact CDF (no sampling noise) and a takeoff angle at each end | `nexrad_asr11_mag_rev1(struct("seed", 1, "cdf_method", "exact", "el_nexrad_deg", 1.7, "el_atc_deg", 2.0))` |
+| Get the exact random-mode MAG distribution of any two rotating radars, including sectors | `mag_exact_cdf_rev1(sys1, sys2, opts)` |
 | Run the same model with the ASR-9 | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3, "atc_radar", "asr9"))` |
 | Sweep every VCP mode for the ASR-9 and compare it with the ASR-11 | `example_asr9_rev1` |
 | Sweep every VCP mode and option combination (74 modes) | `example_nexrad_asr11_rev1` |
@@ -36,7 +38,7 @@ runtests(["test_radar_mutual_gain_cdf_rev1", "test_nexrad_asr11_rev1", ...
     "test_scripts_rev1", "test_validation_rev1"])
 ```
 
-Run `test_mag_lookup_rev1` and `test_gain_slice_rev1` for the two-step lookup (gain tables, gain slices and pair CDFs), and `test_regression_rev5` to check both models against pinned Rev 5 and two-part reference outputs (`docs/figures/vcp_sweep_rev5.csv`, `test_data/mag_lookup_reference_rev1.csv`).
+Run `test_exact_cdf_rev1` for the exact CDF in the original model, and `test_mag_lookup_rev1` and `test_gain_slice_rev1` for the two-step lookup (gain tables, gain slices and pair CDFs), and `test_regression_rev5` to check both models against pinned Rev 5 and two-part reference outputs (`docs/figures/vcp_sweep_rev5.csv`, `test_data/mag_lookup_reference_rev1.csv`).
 
 The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev5` end to end with small runs, writing to a temporary folder.
 
@@ -54,6 +56,7 @@ The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code c
 | `alignment_dwell_rev1.m` | Alignment of equal, multiple, or volume-locked scan rates |
 | `peak_label_rev1.m`, `merge_overrides_rev1.m` | Figure 5 labels; small-run overrides for the script tests |
 | `example_*.m`, `report_figures_rev5.m` | Entry points and report figures |
+| `mag_exact_cdf_rev1.m` | Exact counterpart of the random mode: same outputs, no samples; sector scans supported |
 | `gain_slice_prep_rev1.m`, `gain_slice_rev1.m` | Exact gain distribution of one rotating antenna at one tilt and elevation: closed form for patterns of the off-axis angle, shifted azimuth cut for separable apertures, azimuth grid otherwise; full rotation or sector |
 | `make_mag_lookup_reference_rev1.m`, `redteam_fault_seed_rev1.m` | Pin the two-part reference outputs; plant known bugs and check the tests catch them |
 | `gain_dist_table_rev1.m`, `mag_pair_cdf_rev1.m`, `nexrad_mode_scans_rev1.m` | Two-step MAG: exact gain distribution of each antenna by takeoff angle and scan mode (run once), then any pair's CDF by convolution, without a Monte Carlo run per pair |
