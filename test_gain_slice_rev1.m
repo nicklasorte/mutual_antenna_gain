@@ -99,6 +99,24 @@ verifyLessThanOrEqual(tc, abs(pct_diff(h, kr, pr, tc.TestData.levels)), tc.TestD
 verifyEqual(tc, sum(h.p), 1, "AbsTol", 1e-12);
 end
 
+function testSeparableSectorPeakIsExact(tc)
+% Review R5: for a separable sector slice, gmax was the largest azimuth
+% sample, up to 0.007 dB below the true peak. It now includes az_off = 0
+% when inside the sector and the sector ends.
+S = gain_slice_prep_rev1(tc.TestData.ants(2).ant);
+verifyEqual(tc, S.method, "separable");
+for c = [0.31 -2.17 2.4]
+    lim = c + [-3.0003, 2.9997];               % holds az_off = 0, off the sample grid
+    h = gain_slice_rev1(S, 1.0, 0.7, lim);
+    st = struct("mech_az", 0, "tilt", 1.0, "steer_az", 0, "steer_el", 0);
+    verifyEqual(tc, h.gmax, antenna_gain_rev1(S.pa, 0, 0.7, st), "AbsTol", 1e-12);
+end
+lim = [10.00037, 30.00037];                      % main beam outside: peak at the near end
+h = gain_slice_rev1(S, 1.0, 0.7, lim);
+st = struct("mech_az", -10.00037, "tilt", 1.0, "steer_az", 0, "steer_el", 0);
+verifyGreaterThanOrEqual(tc, h.gmax, antenna_gain_rev1(S.pa, 0, 0.7, st) - 1e-12);
+end
+
 function testZenithIsOneGain(tc)
 S = gain_slice_prep_rev1(tc.TestData.ants(1).ant);
 h = gain_slice_rev1(S, 0.5, 90);

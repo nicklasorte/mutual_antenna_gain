@@ -69,6 +69,18 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %                    It follows the site's Doppler PRF; decoded values are
 %                    12.524, 14.458, 15.831 and 17.106 deg/s. VCPs 12, 35,
 %                    212, 215 only.
+%     low_el_deg     site lowest elevation below 0.5 deg (default [],
+%                    none). Public NWS material lists sites with a
+%                    supplemental low cut at -0.2 to +0.4 deg (WDTD
+%                    "Supplemental Low Elevation Angles"; NWS SCN 24-09,
+%                    26-20). Allowed range -1 to 0.49 deg.
+%     low_el_mode    "add" (default): one more elevation group at
+%                    low_el_deg, a copy of the lowest group's cuts (same
+%                    waveforms and rates), at the start of the volume |
+%                    "replace": the lowest group's cuts (and their SAILS
+%                    or MRLE rescans) move to low_el_deg. Which one a site
+%                    runs is a site setting; red team A4 found up to
+%                    +3.1 dB for "add" at the worst mode.
 %
 %   Source of the cut tables: VCP messages (Message Type 5) in operational
 %   Level II files (NOAA NEXRAD Level II on AWS, unidata-nexrad-level2),
@@ -107,7 +119,7 @@ function scan = nexrad_vcp_rev1(vcp, opts)
 %     .limits         struct: sails (most rescans), mrle, avset, cd_rate
 %     .source_file    Level II file the table was decoded from
 %     .cuts           table: cut, el_deg, waveform, rate_deg_s, dur_s, kind
-%                     ("base" | "sails" | "mrle")
+%                     ("base" | "sails" | "mrle" | "low_el")
 %     .volume_s       volume time (s)
 %     .options        options used
 %
@@ -127,6 +139,8 @@ arguments
     opts.mrle (1,1) double {mustBeInteger, mustBeNonnegative} = 0
     opts.avset_top_deg (1,1) double = Inf
     opts.cd_rate_deg_s double = []
+    opts.low_el_deg double = []
+    opts.low_el_mode (1,1) string {mustBeMember(opts.low_el_mode, ["add", "replace"])} = "add"
 end
 
 [cuts, lim] = vcp_table(vcp);
@@ -163,6 +177,9 @@ if ~isempty(opts.cd_rate_deg_s)
     end
     cuts.rate_deg_s(cuts.waveform == "CD") = opts.cd_rate_deg_s;
 end
+if ~isempty(opts.low_el_deg) && (~isscalar(opts.low_el_deg) || opts.low_el_deg < -1 || opts.low_el_deg >= 0.49)
+    error("radar_coupling:vcpLowEl", "low_el_deg must be a scalar in [-1, 0.49) deg (got %s).", mat2str(opts.low_el_deg));
+end
 
 % ---- AVSET: drop the cuts above the termination elevation.
 cuts = cuts(cuts.el_deg <= opts.avset_top_deg + 1e-9, :);
@@ -175,6 +192,18 @@ if opts.sails > 0
     cuts = insert_groups(cuts, cuts(cuts.el_deg == els(1), :), opts.sails, "sails");
 elseif opts.mrle > 0
     cuts = insert_groups(cuts, cuts(ismember(cuts.el_deg, els(1:opts.mrle)), :), 1, "mrle");
+end
+% ---- Site lowest elevation below 0.5 deg (red team A4).
+if ~isempty(opts.low_el_deg)
+    low = cuts.el_deg == els(1);
+    if opts.low_el_mode == "replace"
+        cuts.el_deg(low) = opts.low_el_deg;
+    else
+        g = cuts(low & cuts.kind == "base", :);
+        g.el_deg(:) = opts.low_el_deg;
+        g.kind(:) = "low_el";
+        cuts = [g; cuts];
+    end
 end
 cuts.cut = (1:height(cuts))';
 cuts = cuts(:, ["cut", "el_deg", "waveform", "rate_deg_s", "dur_s", "kind"]);

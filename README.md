@@ -28,6 +28,7 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Make every figure and table in the report | `report_figures_rev5` (writes `docs/figures`) |
 | Build a gain table once per radar (all 216 WSR-88D modes: every VCP option and AVSET termination; `nexrad_mode_scans_rev1("lowest")` gives the 74 Rev 5 modes) | `[s, n] = nexrad_mode_scans_rev1(); T = gain_dist_table_rev1(ant, s, struct("mode_names", n))` |
 | Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` (about 1.1 ms per pair for thousands of pairs) |
+| Model a site whose lowest cut is below 0.5 deg (supplemental low cut, or the lowest group moved) | `nexrad_vcp_rev1(212, low_el_deg=-0.2)`, `low_el_mode="replace"`; wrapper option `low_el_deg`; per-site table: `nexrad_mode_scans_rev1("all", low_el_deg=0.2)` |
 | Make a large pair study faster by sharing slices between nearby angles (each 0.01 deg cell gets its upper envelope, so results are never below the unrounded ones) | `mag_pair_cdf_rev1(T_tx, T_rx, el_tx, el_rx, struct("el_round_deg", 0.01))` |
 | Build both tables and run a worked pair and 1,000 random pairs | `example_mag_lookup_rev1` |
 | Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |

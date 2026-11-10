@@ -28,8 +28,10 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       2.7 GHz link budget working paper model: one
 %                       horizon cut at 3 rpm (Table 4.4-1).
 %     .vcp              12 | 31 | 32 | 34 | 35 | 112 | 212 (default) | 215
-%     .sails, .mrle, .avset_top_deg, .cd_rate_deg_s
-%                       VCP options, see nexrad_vcp_rev1 (0, 0, Inf, [])
+%     .sails, .mrle, .avset_top_deg, .cd_rate_deg_s, .low_el_deg,
+%     .low_el_mode      VCP options, see nexrad_vcp_rev1 (0, 0, Inf, [],
+%                       [], "add"); low_el_deg is the site's supplemental
+%                       cut below 0.5 deg
 %     .nexrad_pattern   "nssl_measured" (default) | "roc_spec" | "f1245"
 %     .atc_radar        "asr11" (default, M.1464-2 Radar C) | "asr9"
 %                       (M.1464-2 Radar B). See assumptions().
@@ -512,7 +514,8 @@ end
 switch opts.nexrad_scan
     case "vcp"
         scan_n = nexrad_vcp_rev1(opts.vcp, sails=opts.sails, mrle=opts.mrle, ...
-            avset_top_deg=opts.avset_top_deg, cd_rate_deg_s=opts.cd_rate_deg_s);
+            avset_top_deg=opts.avset_top_deg, cd_rate_deg_s=opts.cd_rate_deg_s, ...
+            low_el_deg=opts.low_el_deg, low_el_mode=opts.low_el_mode);
     case "constant"
         scan_n = struct("type", "mech_rotating", "rate_rpm", A.nex.paper_rate_rpm, ...
             "tilt_deg", A.nex.paper_tilt_deg);
@@ -1074,7 +1077,7 @@ if ~isfield(opts, "seed") || isempty(opts.seed)
     error("radar_coupling:missingSeed", "opts.seed is required for reproducibility.");
 end
 d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_deg", Inf, ...
-    "cd_rate_deg_s", [], "nexrad_pattern", "nssl_measured", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
+    "cd_rate_deg_s", [], "low_el_deg", [], "low_el_mode", "add", "nexrad_pattern", "nssl_measured", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
     "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
     "nexrad_sector_deg", 360, "nexrad_sector_center_deg", 0, "nexrad_sweep_mode", "restart", ...

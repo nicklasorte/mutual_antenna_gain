@@ -142,6 +142,34 @@ for e = e_off
 end
 end
 
+function testInterpolationWeightsPointTheRightWay(tc)
+% Red team F2: swapped interpolation weights (a for 1 - a) passed every
+% test but the pinned reference, because testInterpolationError checks
+% midpoints only. Near a node the result must sit near that node: in the
+% grid intervals where the node percentiles differ by 0.5 dB or more, a
+% point one tenth of the way in is closer to the near node.
+d = tc.TestData;
+g = d.Tn.el_grid_deg;
+q = mag_pair_cdf_rev1(d.Tn, d.Ta, g(:), 0*g(:));
+v = q.pct{:, 3:2 + numel(q.pct_list)};
+dv = abs(diff(v, 1, 1));
+[~, o] = sort(max(dv, [], 2), "descend");
+iv = o(1:min(5, numel(o)));
+iv = iv(max(dv(iv, :), [], 2) >= 0.5);
+verifyNotEmpty(tc, iv);
+for i = iv'
+    for a = [0.1 0.9]
+        e = g(i) + a*(g(i + 1) - g(i));
+        r = mag_pair_cdf_rev1(d.Tn, d.Ta, e, 0).pct{1, 3:2 + numel(q.pct_list)};
+        big = dv(i, :) >= 0.5;
+        near = (a < 0.5)*v(i, :) + (a > 0.5)*v(i + 1, :);
+        far = (a < 0.5)*v(i + 1, :) + (a > 0.5)*v(i, :);
+        verifyLessThan(tc, abs(r(big) - near(big)), abs(r(big) - far(big)), ...
+            sprintf("interval %.2f to %.2f deg, a = %.1f", g(i), g(i + 1), a));
+    end
+end
+end
+
 function testEqualRatesWarn(tc)
 d = tc.TestData;
 verifyWarning(tc, @() mag_pair_cdf_rev1(d.Ta, d.Ta, 0, 0), "mag_pair:equalRates");

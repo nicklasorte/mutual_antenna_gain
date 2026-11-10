@@ -1,4 +1,4 @@
-function [scans, names] = nexrad_mode_scans_rev1(avset)
+function [scans, names] = nexrad_mode_scans_rev1(avset, opts)
 %NEXRAD_MODE_SCANS_REV1 Scan structs for every WSR-88D scan mode in the sweep.
 %   [scans, names] = nexrad_mode_scans_rev1() returns one nexrad_vcp_rev1
 %   scan struct per WSR-88D scan mode in vcp_mode_cases_rev1 (every VCP in
@@ -9,6 +9,10 @@ function [scans, names] = nexrad_mode_scans_rev1(avset)
 %
 %   [scans, names] = nexrad_mode_scans_rev1("lowest") returns the 74 modes
 %   of the Rev 5 study (AVSET at 6.4 deg only). See vcp_mode_cases_rev1.
+%
+%   nexrad_mode_scans_rev1(avset, low_el_deg=x, low_el_mode=m) gives every
+%   mode the site's lowest elevation below 0.5 deg (nexrad_vcp_rev1), for
+%   a per-site gain table.
 %
 %   scans  1-by-N cell array of scan structs, for gain_dist_table_rev1
 %   names  1-by-N string array of mode labels ("VCP 212 SAILSx3 AVSET 6.4")
@@ -21,6 +25,8 @@ function [scans, names] = nexrad_mode_scans_rev1(avset)
 
 arguments
     avset (1, 1) string = "all"
+    opts.low_el_deg double = []
+    opts.low_el_mode (1, 1) string = "add"
 end
 c = vcp_mode_cases_rev1(avset);
 c = c(2:end);                                   % c{1} is the paper's constant-rate case
@@ -29,7 +35,8 @@ names = strings(1, numel(c));
 for k = 1:numel(c)
     s = c{k};
     scans{k} = nexrad_vcp_rev1(s.vcp, sails=s.sails, mrle=s.mrle, ...
-        avset_top_deg=s.avset_top_deg, cd_rate_deg_s=s.cd_rate_deg_s);
+        avset_top_deg=s.avset_top_deg, cd_rate_deg_s=s.cd_rate_deg_s, ...
+        low_el_deg=opts.low_el_deg, low_el_mode=opts.low_el_mode);
     names(k) = string(s.label);
 end
 end

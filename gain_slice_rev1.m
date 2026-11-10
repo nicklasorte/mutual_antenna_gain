@@ -32,8 +32,13 @@ function h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg, edge_frac)
 %     .k_lo   integer index of the first bin: bin b holds gain
 %             (k_lo + b - 1)*bin_dB, the upper edge of its interval
 %     .p      probability mass per bin (column, sums to 1)
-%     .gmax   largest gain toward the station over the sweep (dBi; exact
-%             for closed_form and separable, grid maximum for grid)
+%     .gmax   largest gain toward the station over the sweep (dBi): exact
+%             for closed form; for separable and grid slices, the largest
+%             of the azimuth samples, the interval ends and az_off = 0
+%             (when inside), so exact whenever the peak is the main beam
+%             or an interval end, and otherwise within the sampling error
+%             of a sidelobe peak (review R5: was the sample maximum, up to
+%             0.007 dB low for sectors)
 %
 %   Example:
 %     S = gain_slice_prep_rev1(ant_nexrad);
@@ -71,6 +76,7 @@ switch S.method
         else
             m = in_lim(S.az, lo, L);
             h = separable_subset(S, m, tilt_deg, el_deg, dg);
+            h.gmax = max(h.gmax, peak_extra(S, tilt_deg, el_deg, lo, L));
         end
     case "grid"
         m = true(size(S.az));
@@ -78,6 +84,11 @@ switch S.method
             m = in_lim(S.az, lo, L);
         end
         h = grid_slice(S, m, tilt_deg, el_deg, dg);
+        if full
+            h.gmax = max(h.gmax, peak_extra(S, tilt_deg, el_deg, -180, 360));
+        else
+            h.gmax = max(h.gmax, peak_extra(S, tilt_deg, el_deg, lo, L));
+        end
     otherwise
         error("gain_slice:badMethod", "Unknown method ""%s"" in S.", S.method);
 end
@@ -204,6 +215,20 @@ function s = elev_term(S, tilt, el)
 % g_az = 0); clamping does not change max(g_az + g_el, floor).
 g0 = antenna_gain_rev1(S.pa, 0, el, struct("mech_az", 0, "tilt", tilt, "steer_az", 0, "steer_el", 0));
 s = g0 - S.g_max;
+end
+
+% -------------------------------------------------------------------------
+function g = peak_extra(S, tilt, el, lo, L)
+% Gain at the interval ends and at az_off = 0 (when inside), which the
+% azimuth samples can miss (review R5). Only the peak uses these; the
+% distribution stays on the samples.
+a = [lo; lo + L];
+if in_lim(0, lo, L)
+    a = [a; 0];
+end
+a = mod(a + 180, 360) - 180;
+z = zeros(size(a));
+g = max(antenna_gain_rev1(S.pa, 0, el, struct("mech_az", -a, "tilt", z + tilt, "steer_az", z, "steer_el", z)));
 end
 
 % -------------------------------------------------------------------------

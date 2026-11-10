@@ -560,6 +560,34 @@ verifyLessThanOrEqual(tc, L.max_mag_ts_dBi(isfinite(L.max_mag_ts_dBi)), ...
     L.max_mag_dBi(isfinite(L.max_mag_ts_dBi)) + 0.01);   % 0.002 deg grid of the exact maxima
 end
 
+function testLowElevationCut(tc)
+% Red team A4: sites with a supplemental cut below 0.5 deg. "add" puts a
+% copy of the lowest group at the new angle first in the volume; "replace"
+% moves the lowest group (and its SAILS rescans). The MAG toward a path at
+% that angle rises.
+b = nexrad_vcp_rev1(212, sails=1);
+a = nexrad_vcp_rev1(212, sails=1, low_el_deg=-0.2);
+r = nexrad_vcp_rev1(212, sails=1, low_el_deg=0.2, low_el_mode="replace");
+g = b.cuts(b.cuts.el_deg == 0.5 & b.cuts.kind == "base", :);
+verifyEqual(tc, height(a.cuts), height(b.cuts) + height(g));
+verifyEqual(tc, a.cuts.el_deg(1:height(g)), -0.2 + zeros(height(g), 1));
+verifyEqual(tc, a.cuts.rate_deg_s(1:height(g)), g.rate_deg_s);
+verifyEqual(tc, a.volume_s, b.volume_s + sum(g.dur_s), "AbsTol", 1e-9);
+verifyEqual(tc, height(r.cuts), height(b.cuts));
+verifyFalse(tc, any(r.cuts.el_deg == 0.5));
+verifyEqual(tc, sum(r.cuts.el_deg == 0.2), sum(b.cuts.el_deg == 0.5));
+o = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "cdf_method", "exact", ...
+    "el_nexrad_deg", -0.2, "el_atc_deg", 0, "pct", [99 99.99]);
+x0 = nexrad_asr11_mag_rev1(o);
+o.low_el_deg = -0.2;
+x1 = nexrad_asr11_mag_rev1(o);
+verifyGreaterThanOrEqual(tc, x1.cdf.pct21.gain_dBi, x0.cdf.pct21.gain_dBi);
+verifyGreaterThan(tc, max(x1.cdf.pct21.gain_dBi - x0.cdf.pct21.gain_dBi), 0.5);
+[~, n] = nexrad_mode_scans_rev1("lowest", low_el_deg=0.2);
+verifyEqual(tc, numel(n), 74);
+verifyError(tc, @() nexrad_vcp_rev1(212, low_el_deg=0.5), "radar_coupling:vcpLowEl");
+end
+
 function testFlatAtcCutRuns(tc)
 % Red team (step 8): an ASR tilted to 2.5 deg with a +6.5 dBi floor sits
 % on the floor at every azimuth toward a 0 deg path. The lobe regions used
