@@ -27,7 +27,8 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Find how long equal or multiple scan rates stay aligned | `example_asr11_drift_rev1` |
 | Make every figure and table in the report | `report_figures_rev5` (writes `docs/figures`) |
 | Build a gain table once per radar (all 74 VCP modes for the WSR-88D) | `T = gain_dist_table_rev1(ant, nexrad_mode_scans_rev1(), opts)` |
-| Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` |
+| Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` (about 1.1 ms per pair for thousands of pairs) |
+| Make a large pair study faster by sharing slices between nearby angles | `mag_pair_cdf_rev1(T_tx, T_rx, el_tx, el_rx, struct("el_round_deg", 0.01))` |
 | Build both tables and run a worked pair and 1,000 random pairs | `example_mag_lookup_rev1` |
 | Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |
 | Get one antenna's exact gain distribution at a tilt and takeoff angle, full rotation or a sector | `h = gain_slice_rev1(gain_slice_prep_rev1(ant), tilt_deg, el_deg, az_lim_deg)` |

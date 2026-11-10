@@ -44,7 +44,14 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %                   own elevations with gain_slice_rev1 (no interpolation
 %                   error; slower for many tilts; tables made after
 %                   gain_slice_rev1 only)
-%     .parallel_flag 1 runs the pairs in parfor (default 0)
+%     .parallel_flag 1 runs the pair groups in parfor (default 0)
+%     .conv_method  "fft" (default: one FFT per slice column, one inverse
+%                   FFT for every tilt pair) | "direct" (conv; same
+%                   results, kept for checks)
+%     .el_round_deg  round takeoff angles to this step before grouping
+%                   (default 0: exact angles). Pairs that share the
+%                   heavier side's angle share its slices; rounding to,
+%                   for example, 0.01 deg makes more pairs share them
 %
 %   Scan modes: every pair of included modes (tx mode, rx mode) is
 %   convolved, and the result is the worst-mode envelope: at each gain the
@@ -129,15 +136,68 @@ mode_pct = NaN(n_pair, n_mp, n_pct);
 max_path = NaN(n_pair, 1);
 curve = cell(n_pair, 1);
 o = opts;
+% Batching (plan T5): group the pairs by the elevation (and bearing) of the
+% side with more slice columns, usually the WSR-88D's 21 tilts, and make
+% that side's slices and their FFT once per group; the other side is made
+% once per distinct elevation (and bearing) and reused.
+et = el_tx_deg;
+er = el_rx_deg;
+if opts.el_round_deg > 0
+    et = round(et/opts.el_round_deg)*opts.el_round_deg;
+    er = round(er/opts.el_round_deg)*opts.el_round_deg;
+end
+heavy_r = n_cols(sd_r) >= n_cols(sd_t);
+if heavy_r
+    [kh, kl] = deal([er, brg_r.*is_sec_r], [et, brg_t.*is_sec_t]);
+else
+    [kh, kl] = deal([et, brg_t.*is_sec_t], [er, brg_r.*is_sec_r]);
+end
+[uh, ~, gh] = unique(kh, "rows");
+[ul, ~, gl] = unique(kl, "rows");
+light = cell(size(ul, 1), 1);
+sd_l = sd_t;
+sd_h = sd_r;
+if ~heavy_r
+    [sd_l, sd_h] = deal(sd_r, sd_t);
+end
+pr = [];                                          % keys are sorted, so one interval's keys are adjacent
+for i = 1:size(ul, 1)
+    [light{i}.p, light{i}.k0, light{i}.g, pr] = slices_at(sd_l, ul(i, 1), ul(i, 2), opts.interp, pr);
+end
+L_light = max(cellfun(@(x) size(x.p, 1), light));
+members = accumarray(gh, (1:n_pair)', [size(uh, 1) 1], @(x) {x});
+% Groups whose heavy elevations fall in the same table interval share the
+% part of the quantile interpolation that does not depend on the position
+% in the interval (one sort per interval, not per elevation).
+n_g = size(uh, 1);
+if opts.interp == "quantile" && sd_h.sector_deg == 360
+    ch = discretize(uh(:, 1), sd_h.grid);
+else
+    ch = (1:n_g)';
+end
+[~, ~, ch] = unique(ch);
+chunks = accumarray(ch, (1:n_g)', [], @(x) {x});
+keys_c = cellfun(@(x) uh(x, :), chunks, "UniformOutput", false);   % sliced for parfor
+mem_c = cellfun(@(x) members(x), chunks, "UniformOutput", false);
+G = cell(numel(chunks), 1);
 if opts.parallel_flag
-    parfor ip = 1:n_pair
-        [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(sd_t, el_tx_deg(ip), brg_t(ip), sd_r, el_rx_deg(ip), brg_r(ip), Wk, dg, o);
+    parfor ic = 1:numel(chunks)
+        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, Wk, dg, o);
     end
 else
-    for ip = 1:n_pair
-        [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(sd_t, el_tx_deg(ip), brg_t(ip), sd_r, el_rx_deg(ip), brg_r(ip), Wk, dg, o);
+    for ic = 1:numel(chunks)
+        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, Wk, dg, o);
+    end
+end
+for ic = 1:numel(G)
+    for j = 1:numel(G{ic})
+        ip = members{chunks{ic}(j)};
+        g = G{ic}{j};
+        pct_env(ip, :) = g.q_env;
+        worst(ip, :) = g.worst;
+        mode_pct(ip, :, :) = g.q_mode;
+        max_path(ip) = g.max_path;
+        curve(ip) = g.curve;
     end
 end
 
@@ -164,20 +224,84 @@ R.notes = [
 end
 
 % =========================================================================
-function [q_env, worst, q_mode, max_path, curve] = one_pair(sd_t, et, bt, sd_r, er, br, Wk, dg, opts)
-[pt, k0t, gt] = slices_at(sd_t, et, bt, opts.interp); % bins by tx slice columns
-[pr, k0r, gr] = slices_at(sd_r, er, br, opts.interp); % bins by rx slice columns
-k_off = k0t + k0r;                                    % conv bin c holds (k_off + c - 1)*bin_dB
-nt = size(pt, 2);
-nr = size(pr, 2);
-L = size(pt, 1) + size(pr, 1) - 1;
-C = zeros(L, nt*nr);
-for s = 1:nr
-    for t = 1:nt
-        C(:, (s - 1)*nt + t) = conv(pt(:, t), pr(:, s));
-    end
+function out = run_chunk(sd_h, keys, mem, light, gl, heavy_r, L_light, Wk, dg, opts)
+% Groups of one heavy-side table interval (or a single group).
+pr = [];
+out = cell(size(keys, 1), 1);
+for j = 1:size(keys, 1)
+    [ph, k0h, gmh, pr] = slices_at(sd_h, keys(j, 1), keys(j, 2), opts.interp, pr);
+    out{j} = run_group(ph, k0h, gmh, mem{j}, light, gl, heavy_r, L_light, Wk, dg, opts);
 end
-PM = max(C*Wk', 0);                                   % bins by mode pairs; clip conv round-off
+end
+
+% -------------------------------------------------------------------------
+function out = run_group(ph, k0h, gmh, ip, light, gl, heavy_r, L_light, Wk, dg, opts)
+% Every pair of one group: the heavy side's slices (ph) and FFT once.
+Lh = size(ph, 1);
+nfft = 2^nextpow2(Lh + L_light - 1);
+Fh = [];
+if opts.conv_method == "fft"
+    Fh = fft(ph, nfft, 1);                          % dim 1: a slice can be one bin
+end
+sh = find(any(ph > 0, 2));                         % rows of the heavy side's support
+n = numel(ip);
+n_pct = numel(opts.pct);
+n_mp = size(Wk, 1);
+out = struct("q_env", NaN(n, n_pct), "worst", zeros(n, n_pct), "q_mode", NaN(n, n_mp, n_pct), ...
+    "max_path", NaN(n, 1), "curve", {cell(n, 1)});
+for i = 1:n
+    li = light{gl(ip(i))};
+    L = Lh + size(li.p, 1) - 1;
+    if heavy_r                                     % tx = light, rx = heavy
+        pt = li.p;
+        pr = ph;
+    else
+        pt = ph;
+        pr = li.p;
+    end
+    nt = size(pt, 2);
+    nr = size(pr, 2);
+    if opts.conv_method == "fft"
+        % Plan T4: one FFT per light column, one inverse FFT for every
+        % tilt pair, columns in tx-fastest order as Wk expects.
+        Fl = fft(li.p, nfft, 1);
+        if heavy_r
+            Ft = Fl;
+            Fr = Fh;
+        else
+            Ft = Fh;
+            Fr = Fl;
+        end
+        Gp = reshape(Ft.*reshape(Fr, nfft, 1, nr), nfft, nt*nr);
+        C = real(ifft(Gp, [], 1));
+        % Rows outside the exact support hold only FFT round-off; zero them
+        % so the envelope curve ends where the direct convolution's does.
+        sl = find(any(li.p > 0, 2));
+        C([1:sl(1) + sh(1) - 2, sl(end) + sh(end):end], :) = 0;
+        C = C(1:L, :);
+    else
+        C = zeros(L, nt*nr);
+        for s = 1:nr
+            for t = 1:nt
+                C(:, (s - 1)*nt + t) = conv(pt(:, t), pr(:, s));
+            end
+        end
+    end
+    [q_env, worst, q_mode, curve] = finish_pair(C, li.k0 + k0h, dg, Wk, opts);
+    out.q_env(i, :) = q_env;
+    out.worst(i, :) = worst;
+    out.q_mode(i, :, :) = q_mode;
+    out.curve{i} = curve;
+    out.max_path(i) = max(li.g) + max(gmh);
+end
+end
+
+% -------------------------------------------------------------------------
+function [q_env, worst, q_mode, curve] = finish_pair(C, k_off, dg, Wk, opts)
+% Mode-pair distributions from the tilt-pair convolutions; percentiles,
+% worst mode and the envelope curve. Conv bin c holds (k_off + c - 1)*bin_dB.
+L = size(C, 1);
+PM = max(C*Wk', 0);                                   % bins by mode pairs; clip round-off
 E = cumsum(PM, 1, "reverse") - PM;                    % P(MAG > gain of bin), tail-accurate
 gain = (k_off + (0:L - 1)')*dg;
 n_pct = numel(opts.pct);
@@ -193,7 +317,6 @@ end
 [q_env, worst] = max(q_mode, [], 2);
 q_env = reshape(q_env, 1, n_pct);
 worst = reshape(worst, 1, n_pct);
-max_path = max(gt) + max(gr);
 curve = [];
 if opts.return_curve
     e_env = max(E, [], 2);
@@ -204,12 +327,22 @@ end
 end
 
 % -------------------------------------------------------------------------
-function [p, k0, gmax] = slices_at(sd, el, brg, how)
+function n = n_cols(sd)
+n = numel(sd.tilt)*(1 + sd.has_edge);
+end
+
+% -------------------------------------------------------------------------
+function [p, k0, gmax, pr] = slices_at(sd, el, brg, how, pr)
 % Distributions of every slice column at elevation el (bins by columns,
 % double), the bin index k0 of row 1, and each column's largest gain
 % toward the station. Columns are the tilts; for a sector with turnaround,
 % the tilts' uniform parts, then their edge parts. brg is the bearing of
-% the other station from the sector center (sector sides only).
+% the other station from the sector center (sector sides only). pr, when
+% given, is the interpolation setup of el's table interval (reused when
+% the next call falls in the same interval).
+if nargin < 5
+    pr = [];
+end
 if sd.sector_deg < 360
     n_tilt = numel(sd.tilt);
     lim = [brg - sd.sector_deg/2, brg + sd.sector_deg/2];   % az_off = bearing - beam azimuth
@@ -258,42 +391,51 @@ if how == "nearest" || a == 0 || a == 1
     p = double(reshape(sd.P(:, i, :), [], n_tilt));
     return
 end
-p0 = double(reshape(sd.P(:, i, :), [], n_tilt));
-p1 = double(reshape(sd.P(:, i + 1, :), [], n_tilt));
-p = quantile_interp(p0, p1, a);
+if isempty(pr) || pr.i ~= i
+    p0 = double(reshape(sd.P(:, i, :), [], n_tilt));
+    p1 = double(reshape(sd.P(:, i + 1, :), [], n_tilt));
+    pr = interp_prep(p0, p1);
+    pr.i = i;
+end
+p = interp_apply(pr, a);
 end
 
 % -------------------------------------------------------------------------
-function p = quantile_interp(p0, p1, a)
+function pr = interp_prep(p0, p1)
 % Displacement interpolation between two distributions on the same bins,
 % every column (tilt) at once: Q(u) = (1 - a)*Q0(u) + a*Q1(u) for every
 % probability level u, rounded up to a bin (conservative). Considered:
 % linear mixing of the two pmfs ((1 - a)*p0 + a*p1), which leaves two
-% peaks where the gain should move; a loop over columns with unique and
-% interp1 (rev 1), about 60% of the pair time.
+% peaks where the gain should move; three sorts per column (rev 2).
+% This is the part that does not depend on a (interp_apply). One sort of both
+% CDFs gives every breakpoint u. For each u, the smallest bin k with
+% F(k) >= u is 1 + (number of F values strictly below u): each CDF's count
+% of values before the start of u's run of equal values in the sorted
+% order (cummax of the run starts). Considered: a merge of the two sorted
+% CDFs on their support only (find, two 1-D sorts): equal, but slower.
 [n, K] = size(p0);
 F0 = cumsum(p0, 1);
 F0 = F0./F0(end, :);
 F1 = cumsum(p1, 1);
 F1 = F1./F1(end, :);
-u = sort([F0; F1], 1);                           % every breakpoint of both CDFs
-q = (1 - a)*(count_less(F0, u) + 1) + a*(count_less(F1, u) + 1);
-b = min(max(ceil(q - 1e-9), 1), n);
-m = diff([zeros(1, K); u], 1, 1);
-col = repmat(1:K, size(u, 1), 1);
-p = accumarray([b(:), col(:)], m(:), [n K]);
+[u, I] = sort([F0; F1], 1);
+m2 = 2*n;
+from0 = I <= n;
+c0 = [zeros(1, K); cumsum(from0, 1)];
+c1 = [zeros(1, K); cumsum(~from0, 1)];
+pos = repmat((1:m2)', 1, K);
+run0 = cummax([true(1, K); diff(u, 1, 1) > 0].*pos, 1);   % first position of each tie run
+lin = run0 + (m2 + 1)*(0:K - 1);                % row just before the run in c0, c1
+pr = struct("n", n, "K", K, "Q0", c0(lin) + 1, "Q1", c1(lin) + 1, ...
+    "m", diff([zeros(1, K); u], 1, 1), "col", repmat(1:K, m2, 1), "i", 0);
 end
 
 % -------------------------------------------------------------------------
-function c = count_less(F, u)
-% For each column, the number of F values strictly below each u value (F
-% and u sorted ascending): smallest k with F(k) >= u is c + 1. One stable
-% sort per column; u comes first in ties, so equal values do not count.
-nu = size(u, 1);
-[~, I] = sort([u; F], 1);
-isF = I > nu;
-cF = cumsum(isF, 1);
-c = reshape(cF(~isF), nu, []);
+function p = interp_apply(pr, a)
+% Interpolated distribution at fraction a of the interval (interp_prep).
+q = (1 - a)*pr.Q0 + a*pr.Q1;
+b = min(max(ceil(q - 1e-9), 1), pr.n);
+p = accumarray([b(:), pr.col(:)], pr.m(:), [pr.n pr.K]);
 end
 
 % -------------------------------------------------------------------------
@@ -433,7 +575,7 @@ end
 function opts = fill_opts(opts)
 d = struct("pct", [50 90 99 99.9 99.99 99.999], "brg_tx_deg", 0, "brg_rx_deg", 0, "tx_modes", strings(1, 0), ...
     "rx_modes", strings(1, 0), "per_mode", false, "return_curve", false, ...
-    "interp", "quantile", "parallel_flag", 0);
+    "interp", "quantile", "parallel_flag", 0, "conv_method", "fft", "el_round_deg", 0);
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i})
@@ -447,6 +589,13 @@ end
 opts.interp = string(opts.interp);
 if ~ismember(opts.interp, ["quantile", "nearest", "exact"])
     error("mag_pair:badInterp", "opts.interp must be ""quantile"", ""nearest"" or ""exact"".");
+end
+opts.conv_method = string(opts.conv_method);
+if ~ismember(opts.conv_method, ["fft", "direct"])
+    error("mag_pair:badConv", "opts.conv_method must be ""fft"" or ""direct"".");
+end
+if ~isscalar(opts.el_round_deg) || opts.el_round_deg < 0
+    error("mag_pair:badRound", "opts.el_round_deg must be a scalar >= 0.");
 end
 if any(opts.pct < 0 | opts.pct >= 100)
     error("mag_pair:badPct", "opts.pct values must lie in [0, 100).");

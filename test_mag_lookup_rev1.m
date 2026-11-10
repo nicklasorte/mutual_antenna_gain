@@ -116,6 +116,8 @@ verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("bogus", 1)), "ma
 Tb = d.Tn;
 Tb.bin_dB = 0.1;
 verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, Tb, 0, 0), "mag_pair:binMismatch");
+verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("conv_method", "bogus")), "mag_pair:badConv");
+verifyError(tc, @() mag_pair_cdf_rev1(d.Ta, d.Tn, 0, 0, struct("el_round_deg", -1)), "mag_pair:badRound");
 % Sector scans are allowed (plan step 5), but every mode of one table must
 % share the sector geometry.
 s = d.sys_a.scan;
@@ -143,10 +145,70 @@ T0 = gain_dist_table_rev1(d.sys_n.tx, d.sys_n.scan, o);
 o.parallel_flag = 1;
 T1 = gain_dist_table_rev1(d.sys_n.tx, d.sys_n.scan, o);
 verifyEqual(tc, T1.P_tx, T0.P_tx);
-e = [-0.1 0 0.07 0.1];
+e = [-0.1 0 0.07 0.1 0.07 0.02 0.03 0.02];      % repeats: groups and intervals with several pairs
 R0 = mag_pair_cdf_rev1(d.Ta_small, T0, e, fliplr(e));
 R1 = mag_pair_cdf_rev1(d.Ta_small, T0, e, fliplr(e), struct("parallel_flag", 1));
 verifyEqual(tc, R1.pct, R0.pct);
+end
+
+function testFftEqualsDirect(tc)
+% Plan T4: the batched FFT convolution gives the percentiles of the direct
+% one exactly, and the envelope curve to round-off, in both directions.
+d = tc.TestData;
+[et, er] = batch_pairs();
+o = struct("per_mode", true, "return_curve", true);
+od = o;
+od.conv_method = "direct";
+for k = 1:2
+    if k == 1
+        [A, B] = deal(d.Tn, d.Ta);
+    else
+        [A, B] = deal(d.Ta, d.Tn);
+    end
+    R1 = mag_pair_cdf_rev1(A, B, et, er, o);
+    R0 = mag_pair_cdf_rev1(A, B, et, er, od);
+    verifyEqual(tc, R1.pct, R0.pct);
+    verifyEqual(tc, R1.mode_pct, R0.mode_pct);
+    verifyEqual(tc, R1.worst_mode, R0.worst_mode);
+    for i = 1:numel(et)
+        verifyEqual(tc, R1.curve{i}.gain_dBi, R0.curve{i}.gain_dBi);
+        verifyEqual(tc, R1.curve{i}.exceed_pct, R0.curve{i}.exceed_pct, "AbsTol", 1e-9);
+    end
+end
+end
+
+function testGroupedEqualsOneByOne(tc)
+% Plan T5: grouping pairs by elevation (and sharing slices, FFTs and the
+% interpolation setup) does not change any pair's result.
+d = tc.TestData;
+[et, er] = batch_pairs();
+R = mag_pair_cdf_rev1(d.Tn, d.Ta, et, er);
+for i = 1:numel(et)
+    Ri = mag_pair_cdf_rev1(d.Tn, d.Ta, et(i), er(i), struct("conv_method", "direct"));
+    verifyEqual(tc, R.pct(i, :), Ri.pct, sprintf("pair %d", i));
+end
+end
+
+function testRoundingEqualsRoundedInput(tc)
+d = tc.TestData;
+[et, er] = batch_pairs();
+et = et + 0.003;                                 % off the 0.01 grid
+er = er - 0.004;
+R1 = mag_pair_cdf_rev1(d.Tn, d.Ta, et, er, struct("el_round_deg", 0.01));
+R0 = mag_pair_cdf_rev1(d.Tn, d.Ta, round(et/0.01)*0.01, round(er/0.01)*0.01);
+verifyEqual(tc, R1.pct{:, 3:end}, R0.pct{:, 3:end});
+verifyEqual(tc, R1.pct.el_tx_deg, et);           % the table reports the angles given
+end
+
+% =========================================================================
+function [et, er] = batch_pairs()
+% 24 pairs inside the -0.5 to 2.5 deg grid: repeated angles on both sides,
+% several in one table interval, and nodes.
+rs = RandStream("mrg32k3a", "Seed", 7);
+et = [round(-0.4 + 2.8*rand(rs, 12, 1), 3); 0.5; 0.5; 0.5; 1.0];
+er = [round(-0.4 + 2.8*rand(rs, 12, 1), 3); 0.2; 0.21; 0.2; 2.5];
+et = [et; et(1:4) + 0.01; et(5:8)];
+er = [er; er(1:4); er(5:8) + 0.013];
 end
 
 % =========================================================================
