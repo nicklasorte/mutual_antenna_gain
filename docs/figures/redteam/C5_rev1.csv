@@ -1,0 +1,13 @@
+antenna,freq_GHz,aperture_m,far_field_km
+"WSR-88D (8.53 m reflector)",2.7,8.53,1.31060288381237
+"ASR-11/ASR-9 (aperture from 1.4 deg beamwidth)",2.7,5.55171218518518,0.555171218518518
+"pair, 2(D1+D2)^2/lambda",2.7,14.0817121851852,3.57177410233089
+"WSR-88D (8.53 m reflector)",2.8,8.53,1.35914373136098
+"ASR-11/ASR-9 (aperture from 1.4 deg beamwidth)",2.8,5.35343675,0.535343675
+"pair, 2(D1+D2)^2/lambda",2.8,13.88343675,3.60048740636098
+"WSR-88D (8.53 m reflector)",2.9,8.53,1.40768457890959
+"ASR-11/ASR-9 (aperture from 1.4 deg beamwidth)",2.9,5.16883548275862,0.516883548275862
+"pair, 2(D1+D2)^2/lambda",2.9,13.6988354827586,3.63056812718545
+"WSR-88D (8.53 m reflector)",3,8.53,1.45622542645819
+"ASR-11/ASR-9 (aperture from 1.4 deg beamwidth)",3,4.99654096666667,0.499654096666667
+"pair, 2(D1+D2)^2/lambda",3,13.5265409666667,3.66187952312486

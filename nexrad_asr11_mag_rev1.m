@@ -58,7 +58,7 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       2.7 GHz RFS tool.
 %     .cdf_method       "monte_carlo" (default, random-mode samples) |
 %                       "exact" (mag_exact_cdf_rev1: no sampling noise,
-%                       percentiles conservative by at most 0.1 dB;
+%                       percentiles conservative by at most 0.2 dB;
 %                       out.cdf.g12_dBi and g21_dBi are empty and
 %                       out.cdf.dist21 holds the distribution)
 %     .nexrad_sector_deg  NEXRAD azimuth sector (360: full rotation, the
@@ -885,8 +885,16 @@ i1 = find(d > 1e-9 | abs(d) < 1e-12, 1);      % first null or flat envelope
 if ~isnan(sll_dB)
     i1 = min(i1, find(g <= g(1) + sll_dB + 1e-9, 1));   % falls to the first-sidelobe level
 end
+if isempty(i1)
+    % Flat toward the path (the station sits below a tilted fan beam, on
+    % the floor at every azimuth): no main-beam region.
+    i1 = 1;
+end
 g90 = g(find(x >= 90, 1));
 i2 = find(x > x(i1) & g <= g90 + 0.01, 1);
+if isempty(i2)
+    i2 = find(x >= 90, 1);
+end
 e = [x(i1), x(i2), 90];
 end
 

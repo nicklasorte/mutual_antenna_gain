@@ -11,7 +11,7 @@ This plan covers the two mutual antenna gain (MAG) models in the repository:
 
 Nothing in this plan is built yet, except one prototype that is labeled as such. Every baseline number was measured on 2026-11-10 in MATLAB R2025b on the Apple silicon Mac. Every target is an estimate until its work package is done.
 
-## Status, 2026-11-10 (steps 1 to 6)
+## Status, 2026-11-10 (steps 1 to 8)
 
 | Package | Status | Result |
 | --- | --- | --- |
@@ -29,6 +29,7 @@ Nothing in this plan is built yet, except one prototype that is labeled as such.
 | S1 to S3 Sector scans | Done | `sector_sweep_rev1` (restart, or bidirectional with a turnaround dwell) shared by the engine and the wrapper; wrapper options `nexrad_sector_center_deg`, `nexrad_sweep_mode`, `nexrad_turnaround_s`, `atc_sector_deg`, `atc_sector_center_deg`; sector tables and `brg_tx_deg`, `brg_rx_deg` in the two-part model; `gain_slice_rev1` edge dwell. Rev 5 "NEXRAD sector 10 deg" row reproduced bit for bit; engine, exact and two-part agree (`test_sectors_rev1`). A bearing sweep of 26 bearings takes about 0.1 s |
 | E1 (red team, run early) | Finding | "Centered on the path is the worst case" holds for a restart sweep (99.99%: 69.95 dBi centered, 64.40 dBi at the edge) but fails for a bidirectional sweep with a 0.5 s turnaround: with the path at the sector edge the dwell parks the main beam on it, 75.40 against 68.05 dBi at 99.99% (+7.4 dB) and +7.6 dB at 99.9% (30 deg sector, VCP 212 SAILSx3 AVSET 6.4, `docs/figures/sector_bearing_sweep_rev1.csv`). The dwell is a bounding assumption (the beam radiates while parked); no public sweep law is known (TODO). Sector studies must sweep the bearing, not assume the center |
 | Step 6 Time series | Done | Event windows (`scan_event_windows_rev1`: a beam within 4 deg of the path, a subset of the fixed grid, about 5% of it) with a per-pair floor (`ts_floor_rev1`, 15.4 dBi at 0/0). Library once per mode pair (`scan_event_library_rev1`, 0.29 s for 20 h); pair time series (`mag_pair_timeseries_rev1`) 18 ms per pair-hour against 312 ms for the fixed grid (17 times faster, 2.2 s per pair and mode for 120 h; the plan estimated 0.6 s). Reproduces `persistence_120h_rev5.csv` and `persistence_volume_120h_rev5.csv` exactly; maxima above the floor equal the fixed grid. Wrapper: `ts_method = "events"` (O4), parfor trials (O3, identical results), `asr_jitter_mode = "random_walk"`. Harm metric (D4): corrupted 0.5 deg radials per cut, checked against a brute-force count |
+| Step 8 Red team | Done, with three items open | `redteam_runs_rev1` ran attacks A1 to F1 and the NOAA case; findings register `docs/redteam_register_rev1.csv` (33 rows), evidence in `docs/figures/redteam`. Section 7.4 has the results. The runs found and fixed three defects (X1 to X3). Open: F3 and parts of C3 and C5 need an RFS workbook (decision 5); layer 2 review needs decision 4 |
 | D1 (red team, run early) | Finding | Rate-drift model and persistence, 120 h, worst mode: volumes reaching 70 dBi 14.2% per-trial offset (Rev 5 baseline, fully correlated), 13.9% random walk (0.02 deg/s per revolution), 10.6% independent per revolution; longest run 4, 3 and 2 volumes. The Rev 5 baseline is the conservative end; an independent per-revolution draw would understate persistence. The random-walk step has no public source (TODO). `docs/figures/drift_persistence_rev1.csv` |
 | F2 Fault seeding | Done (first set) | `redteam_fault_seed_rev1`: 10 planted faults across both models. First run caught 9; the miss (time-series trials all starting at the same point of the scan cycle) got a new test, `timeSeriesTrialsStartAnywhereInScanCycle`. Rerun: 10 of 10 caught (`docs/figures/fault_seed_rev1.csv`). Step 7: faults 5, 6 and 8 pointed at code that steps 5 and 7 had rewritten (the harness stops on a missing fault text, so none was silently skipped); they now plant the same bugs in the new code, and the rerun catches 10 of 10 |
 
@@ -258,16 +259,40 @@ The event library (section 5) records passages only when the path is inside the 
 
 No test can close these; the report must state them: no aggregate interference from several ATC radars, no polarization or dual-polarization product effects, no pulse-level coupling or frequency-dependent rejection, no validation against observed interference. ROC interference records are restricted and are only named here.
 
+### 7.4 Results of the step 8 runs
+
+All runs used public inputs, the worst mode (VCP 212 SAILSx3 AVSET 6.4) unless stated, and the 0/0 deg geometry unless stated. Severity is the red team's call, for NOAA and FAA reviewers to confirm.
+
+| ID | Result | What it shows |
+| --- | --- | --- |
+| A1 | Pass | Exact and time-series percentiles agree for all 74 modes: 2 of 296 checks fall outside the 95% interval, fewer than the 15 expected by chance |
+| A2 | Pass | No ATC rate in 74.5 to 75.5 deg/s moves the 99.9% value by more than 0.40 dB (limit 1 dB) |
+| A3 | Finding (low) | The envelope bounds every mixture of whole volumes (exceedance is a weighted mean). A mode change in the middle of a volume repeats the low cuts: that one window can sit 1.35 dB above the envelope at 99% and 0.65 dB at 99.9% (0 at 99.99%) |
+| A4 | Finding (medium) | The mode table starts at 0.5 deg; public NWS material lists sites with a supplemental cut at -0.2 to +0.4 deg. One such cut raises the worst mode's MAG by up to 3.1 dB |
+| B1, B3, B4, B5 | Pass | Grid bias inside the stated bound; single precision costs nothing in the tail; closed form never low; Monte Carlo intervals cover 19 or 20 of 20 seeds |
+| B2 | Fail (low) | Interpolation between grid angles: 9 of 32,400 checks over 0.1 dB, largest 0.25 dB; one bin low in 0.25%. Within the corrected bias; use `interp = "exact"` where 0.1 dB matters |
+| C1 | Reported (medium) | The ROC specification envelope gives MAG 10 to 15 dB higher than the NSSL measured pattern at 50 to 99.9% (median), about 1 dB at 99.99%. The NOAA case uses the specification |
+| C2 | Reported (medium) | The ASR-9 remote sidelobe moves the MAG one-for-one at 50, 90, 99.9 and 99.99% |
+| C3 | Partial | Angle convention matches the C# tool (takeoff - tilt, local horizontal, positive up). New C# defect X4. Path-by-path check needs the RFS workbook |
+| C4 | Finding (medium) | ATC tilt -1 to +2.5 deg (the model's range) moves the 99% value by 2.6 dB and 99.999% by 3.3 dB; 99.99% does not move |
+| C5 | Partial | Far field: WSR-88D 1.3 to 1.5 km, ASR about 0.6 km. Pairs under 1.5 km need flagging once the pair list is available |
+| D2 | Pass | 120 h is enough: volume share reaching 70 dBi 12.3% (95% interval 10.6 to 14.2%); no lock-probability interval wider than a factor of two |
+| F1 | Pass after fixes | 500 random cases, 0 outside the Monte Carlo band. The first run found X2 and X3 |
+| NOAA | Reported | ROC specification pattern, ASR remote sidelobe +6.5 dBi, worst tilt: 99.99% MAG 50.3 dBi against 45.5 baseline; volumes reaching 70 dBi unchanged at 12.3% (main beam to main beam does not depend on sidelobes) |
+| X1 | Fixed | The wrapper crashed when the ATC gain toward the path is flat (ASR tilted 2.5 deg over a +6.5 dBi floor) |
+| X2 | Fixed (high) | Closed-form slices crashed when a sector fell inside one segment of a coarse table (10 of 500 F1 cases) |
+| X3 | Fixed | Closed-form slices round up twice, so the stated bias was half the true bound: now 0.2 dB for `mag_exact_cdf_rev1` and 0.3 dB for `mag_pair_cdf_rev1`. Values are unchanged |
+
 ### 7.3 Status of the 2026-11-07 findings
 
 | Finding | Status |
 | --- | --- |
 | Tail percentiles carry Monte Carlo noise | Fixed in the two-part model; fixed in the original by O1 |
 | Wrapper can't run asymmetric takeoff angles | Fixed in the two-part model; O5 fixes the wrapper |
-| Headline metric hides per-volume harm | Open; D4 and section 5 |
+| Headline metric hides per-volume harm | Harm metric built and tested (D4, step 6); to be reported per pair in Rev 6 |
 | Percentile choice rests on meeting statements | Open; needs the source reports |
-| Non-conservative pattern defaults | Open; C1, C2 |
-| Independent rate jitter | Open; D1 |
+| Non-conservative pattern defaults | Quantified (C1, C2, C4); the NOAA case carries the conservative choices |
+| Independent rate jitter | Closed: the per-trial baseline is the most persistent drift model (D1); 120 h is enough (D2) |
 | One pair at a time (no aggregate) | Open; out of scope for this plan, listed in G |
 
 ## 8. Order of work
@@ -281,7 +306,7 @@ No test can close these; the report must state them: no aggregate interference f
 | 5 | Sector scans, two-part and wrapper (section 6) | 3 | Medium |
 | 6 | Event library and pair time series (section 5), O3, O4 | 2 | Large |
 | 7 | T4, T5 (batching), only if step 3 leaves the pair time above target (done) | 3 | Small |
-| 8 | Red-team runs A to F, findings register, NOAA case | 3 to 6 | Large |
+| 8 | Red-team runs A to F, findings register, NOAA case (done) | 3 to 6 | Large |
 | 9 | Rev 6 methodology report | 8 | Medium |
 
 Steps 3 and 6 can run side by side after step 2.
@@ -292,7 +317,9 @@ Steps 3 and 6 can run side by side after step 2.
 2. **Sector scope.** Which radars in the study actually sector-scan? If none do today, sector work can move after the time series.
 3. **Time-series modes.** Run each pair's worst few modes by the CDF envelope (recommended), or all 74.
 4. **Independent review agent.** Approve a separate agent for red-team layer 2, or rely on scripted tests and human review.
-5. **RFS workbook.** F3 and C3 need a workbook with takeoff-angle columns. Cleared for this environment?
+5. **RFS workbook.** F3, C3 and C5 need a workbook with takeoff-angle and ground-distance columns. The project workbook is over the 20 MB in-session limit. Can a smaller, cleared extract be provided?
+6. **Supplemental low cut (A4).** Add a per-site lowest-angle option to the WSR-88D scan model and run the affected sites with it? (Recommended.)
+7. **Pattern for the report (C1).** Report the NSSL measured pattern as the baseline and the ROC specification as the NOAA case side by side (recommended), or pick one.
 
 ## 10. Numbers ledger
 
@@ -307,3 +334,9 @@ Steps 3 and 6 can run side by side after step 2.
 | 99.999% Monte Carlo interval | 66.8 to 71.1 dBi | `convergence_rev5.csv` |
 | Sector 10° sensitivity | +13.9 dB at 99.9%, +28.4 dB at 99.99% | `sensitivity_sweep_rev5.csv` |
 | ATC revolutions | 750 per hour | 12.5 rpm |
+| Pair CDF after step 7 | 1.12 ms per pair (5,000 pairs) | Step 7 benchmark, 2026-11-10 |
+| Exact CDF bias (corrected) | 0.2 dB (`mag_exact_cdf_rev1`), 0.3 dB (`mag_pair_cdf_rev1`) | Red team X3 |
+| ROC spec minus NSSL measured | Median 15.0, 13.2, 10.6, 11.3, 1.0, 0.0 dB at 50 to 99.999% | `docs/figures/redteam/C1_rev1.csv` |
+| NOAA case 99.99% MAG | 50.3 dBi (baseline 45.5) | `docs/figures/redteam/NOAA_rev1.csv` |
+| Volumes reaching 70 dBi, 120 h | 12.3% (95% 10.6 to 14.2%) | `docs/figures/redteam/D2_rev1.csv` |
+| Supplemental low cut effect | Up to +3.1 dB | `docs/figures/redteam/A4_rev1.csv` |

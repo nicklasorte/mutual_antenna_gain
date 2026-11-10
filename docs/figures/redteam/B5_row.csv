@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+B5,Monte Carlo intervals in the original model are honest,"Worst mode at 0/0, 20 seeds of 5e+06 samples; each 95% interval vs the exact value",The stated 95% interval covers about 95% of seeds,Pass,"Seeds covering the exact value (of 20), by percentile 50 to 99.999%: 20, 20, 19, 20, 20, 20 (at least 17 expected).",docs/figures/redteam/B5_rev1.csv,None,None,96.9414836666667,0

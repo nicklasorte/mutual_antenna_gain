@@ -17,7 +17,10 @@ function out = mag_exact_cdf_rev1(sys1, sys2, opts)
 %   radar_mutual_gain_cdf_rev1). Sector scans (sector_deg < 360) restrict
 %   each slice to the sector's azimuths, uniform in time, as the random
 %   mode draws them. Gains are rounded up to the next bin edge, so every
-%   percentile is conservative by at most 2*bin_dB (one bin per antenna).
+%   percentile is conservative by at most 4*bin_dB: per antenna, one bin
+%   from rounding up and, for closed-form slices, one bin from taking each
+%   cell's larger end gain (red team F1 found the earlier 2*bin_dB
+%   statement exceeded by up to 0.05 dB on coarse tables).
 %
 %   sys1, sys2  radar structs as for radar_mutual_gain_cdf_rev1: .tx
 %               (antenna), optional .rx (default .tx), .scan of type
@@ -99,7 +102,7 @@ out.ts = [];
 out.sync = [];
 out.opts = opts;
 out.method = "exact";
-out.bias_dB = 2*opts.bin_dB;
+out.bias_dB = 4*opts.bin_dB;                    % 2 bins per antenna (see header)
 end
 
 % =========================================================================

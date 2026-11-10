@@ -560,6 +560,17 @@ verifyLessThanOrEqual(tc, L.max_mag_ts_dBi(isfinite(L.max_mag_ts_dBi)), ...
     L.max_mag_dBi(isfinite(L.max_mag_ts_dBi)) + 0.01);   % 0.002 deg grid of the exact maxima
 end
 
+function testFlatAtcCutRuns(tc)
+% Red team (step 8): an ASR tilted to 2.5 deg with a +6.5 dBi floor sits
+% on the floor at every azimuth toward a 0 deg path. The lobe regions used
+% to crash; now the ATC radar has no main-beam region there.
+out = quick_run(struct("asr_tilt_deg", 2.5, "asr_remote_sl_dBi", 6.5, "nexrad_pattern", "roc_spec", ...
+    "n_samples", 2e4, "duration_s", 60));
+E = out.lobe_pairs.Properties.UserData;
+verifyEqual(tc, E.asr11(1), 0);
+verifyEqual(tc, sum(out.lobe_pairs.time_pct), 100, "AbsTol", 1e-6);
+end
+
 function testPersistenceConsistent(tc)
 out = quick_run(struct("vcp", 212, "sails", 3, "duration_s", 1500));
 P = out.scan_max.persistence;

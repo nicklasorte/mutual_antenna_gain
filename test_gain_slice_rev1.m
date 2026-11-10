@@ -84,6 +84,21 @@ off = gain_slice_rev1(S, 0.5, 0.5, [90 110]);
 verifyGreaterThan(tc, on.gmax - off.gmax, 40);
 end
 
+function testSectorInsideOnePatternSegment(tc)
+% Red team F1 (step 8): a sector whose off-axis range falls inside one
+% segment of a coarse table (no breakpoint inside) used to crash in
+% refine_cells. It must match the grid like any other slice.
+ant = struct("type", "offaxis_table", "g_max_dBi", 41.1464, ...
+    "offaxis_deg", [0 0.446 0.8958 1.9947 2.4744 2.7664 90 180], ...
+    "gain_dB", [0 -3 -10.9467 -29.6758 -42.6005 -57.3186 -59.6935 -61.4425]);
+S = gain_slice_prep_rev1(ant);
+lim = [-181.98, -125.45];
+h = gain_slice_rev1(S, 4.6886, 1.2, lim);
+[kr, pr] = grid_ref(S, 4.6886, 1.2, lim, tc.TestData.dg);
+verifyLessThanOrEqual(tc, abs(pct_diff(h, kr, pr, tc.TestData.levels)), tc.TestData.dg + 1e-9);
+verifyEqual(tc, sum(h.p), 1, "AbsTol", 1e-12);
+end
+
 function testZenithIsOneGain(tc)
 S = gain_slice_prep_rev1(tc.TestData.ants(1).ant);
 h = gain_slice_rev1(S, 0.5, 90);

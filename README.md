@@ -33,6 +33,7 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |
 | Get one antenna's exact gain distribution at a tilt and takeoff angle, full rotation or a sector | `h = gain_slice_rev1(gain_slice_prep_rev1(ant), tilt_deg, el_deg, az_lim_deg)` |
 | Check that the tests catch planted bugs (red team F2) | `batch(parcluster("Processes"), @redteam_fault_seed_rev1, 1, {pwd}, "AutoAddClientPath", false)` |
+| Run the red-team attacks and rebuild the findings register (`docs/redteam_register_rev1.csv`) | `batch(parcluster("Processes"), @redteam_runs_rev1, 1, {"all"}, "AutoAddClientPath", false)`, then `redteam_runs_rev1("register")` (about an hour; split the attacks across several batch jobs) |
 
 Every model input is in `nexrad_asr11_mag_rev1` (`assumptions` and `citations`) or `nexrad_vcp_rev1`, with a source key and URL. Values without a public source are marked TODO.
 
@@ -43,7 +44,7 @@ runtests(["test_radar_mutual_gain_cdf_rev1", "test_nexrad_asr11_rev1", ...
     "test_scripts_rev1", "test_validation_rev1"])
 ```
 
-Run `test_timeseries_rev1` for the shared scan clock, event windows and pair time series, `test_sectors_rev1` for sector scans in both models, `test_exact_cdf_rev1` for the exact CDF in the original model, and `test_mag_lookup_rev1` and `test_gain_slice_rev1` for the two-step lookup (gain tables, gain slices and pair CDFs), and `test_regression_rev5` to check both models against pinned Rev 5 and two-part reference outputs (`docs/figures/vcp_sweep_rev5.csv`, `test_data/mag_lookup_reference_rev1.csv`).
+Run `test_timeseries_rev1` for the shared scan clock, event windows and pair time series, `test_sectors_rev1` for sector scans in both models, `test_exact_cdf_rev1` for the exact CDF in the original model, and `test_mag_lookup_rev1` and `test_gain_slice_rev1` for the two-step lookup (gain tables, gain slices and pair CDFs), `test_redteam_rev1` for the red-team runner's code paths, and `test_regression_rev5` to check both models against pinned Rev 5 and two-part reference outputs (`docs/figures/vcp_sweep_rev5.csv`, `test_data/mag_lookup_reference_rev1.csv`).
 
 The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code coverage). `test_scripts_rev1` runs every example script, the C# crosscheck, and `report_figures_rev5` end to end with small runs, writing to a temporary folder.
 
@@ -68,6 +69,7 @@ The four test files hold 152 tests and cover 2,562 of 2,564 lines (MATLAB code c
 | `mag_exact_cdf_rev1.m` | Exact counterpart of the random mode: same outputs, no samples; sector scans supported |
 | `gain_slice_prep_rev1.m`, `gain_slice_rev1.m` | Exact gain distribution of one rotating antenna at one tilt and elevation: closed form for patterns of the off-axis angle, shifted azimuth cut for separable apertures, azimuth grid otherwise; full rotation or sector |
 | `make_mag_lookup_reference_rev1.m`, `redteam_fault_seed_rev1.m` | Pin the two-part reference outputs; plant known bugs and check the tests catch them |
+| `redteam_runs_rev1.m` | Red-team attacks A to F and the NOAA case (plan section 7); evidence in `docs/figures/redteam`, register in `docs/redteam_register_rev1.csv` |
 | `gain_dist_table_rev1.m`, `mag_pair_cdf_rev1.m`, `nexrad_mode_scans_rev1.m` | Two-step MAG: exact gain distribution of each antenna by takeoff angle and scan mode (run once), then any pair's CDF by convolution, without a Monte Carlo run per pair |
 | `crosscheck_csharp_rev1.m` | Comparison with the C# reference code of the 2.7 GHz project |
 | `test_*.m` | Tests |

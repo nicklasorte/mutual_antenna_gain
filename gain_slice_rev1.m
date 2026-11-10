@@ -5,7 +5,9 @@ function h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg, edge_frac)
 %   gain_slice_prep_rev1) toward another station at elevation el_deg, while
 %   the beam, at tilt tilt_deg, sweeps azimuth at a constant rate through a
 %   full revolution. Gains are rounded up to the next bin edge (bin_dB), so
-%   every percentile is conservative by at most one bin.
+%   every percentile is conservative: by at most one bin for separable and
+%   grid slices, two bins for closed form (each cell also takes its larger
+%   end gain, at most one bin above any gain inside it).
 %
 %   h = gain_slice_rev1(S, tilt_deg, el_deg, az_lim_deg) restricts the sweep
 %   to an azimuth interval, for sector scans. az_lim_deg = [lo hi] is the
@@ -142,6 +144,7 @@ if all(n_sub == 1)
 end
 n_c = numel(n_sub);
 idx = repelem((1:n_c)', n_sub);                  % parent cell of each sub-cell
+idx = idx(:);                                    % repelem of a scalar returns a row (one cell)
 first = cumsum([1; n_sub(1:end - 1)]);
 j = (1:sum(n_sub))' - first(idx);                % 0 .. n_sub - 1 within the cell
 f = j./n_sub(idx);

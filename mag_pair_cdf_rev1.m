@@ -72,9 +72,15 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %     .mode_pct     pairs by mode pairs by percentiles (dBi), per_mode only
 %     .curve        pairs-by-1 cell of tables (gain_dBi, exceed_pct), when
 %                   return_curve; exceed_pct = 100*P(MAG > gain_dBi)
-%     .bias_dB      upper bound of the conservative grid bias of every
-%                   percentile (dB): one bin per table from rounding gains
-%                   up, plus one bin per table from quantile interpolation
+%     .bias_dB      the conservative grid bias of a percentile (dB): two
+%                   bins per table from the slices (rounding gains up, and
+%                   each closed-form cell's larger end gain), plus one bin
+%                   per table from quantile interpolation. It bounds the error
+%                   at grid-node angles. Between nodes the red team (B2,
+%                   every 0.005 deg) found the interpolated percentile up to
+%                   0.25 dB above the exact one (over 0.1 dB in 9 of 32,400
+%                   checks) and one bin below it in 0.25%; use interp =
+%                   "exact" where that matters
 %     .notes        method notes
 %
 %   Example:
@@ -214,12 +220,12 @@ if opts.return_curve
     R.curve = curve;
 end
 n_interp = 2*(opts.interp == "quantile");
-R.bias_dB = (2 + n_interp)*dg;
+R.bias_dB = (4 + n_interp)*dg;                   % 2 bins per table from the slices, 1 per table from interpolation
 R.pct_list = opts.pct;
 R.notes = [
     "Path " + T_tx.name + " (tx) -> " + T_rx.name + " (rx); M.2069-0 Annex 1 random mode (independent pointing)"
     "Envelope over " + n_mp + " mode pairs: at each gain the largest exceedance (bounds any mode mix)"
-    "Percentiles are conservative: at most " + compose("%.3g", R.bias_dB) + " dB above the exact value (grid rounding)"
+    "Percentiles are conservative by up to " + compose("%.3g", R.bias_dB) + " dB (grid rounding); between grid angles the interpolation can fall one bin low (red team B2)"
     "Not covered: persistence, volume locks and per-volume statistics (use nexrad_asr11_mag_rev1 time series)"];
 end
 

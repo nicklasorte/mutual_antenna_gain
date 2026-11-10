@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+B1,Percentiles are conservative by at most bias_dB,Tables rebuilt with 0.005 dB bins and 0.0002 deg azimuth step; WSR-88D tx (74 modes) to ASR-11 at grid nodes,"Reported value between the refined value and the refined value plus the bias, everywhere",Pass,36 node pairs x 6 percentiles: reported minus refined -0.005 to 0.085 dB (stated bias 0.30 dB); 0 outside.,docs/figures/redteam/B1_rev1.csv,None,None,3.14446720833333,0

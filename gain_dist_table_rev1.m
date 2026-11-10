@@ -29,7 +29,8 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %        parabolic), a shifted azimuth cut for separable apertures (ASR-9,
 %        ASR-11), and the azimuth grid otherwise. Gains are rounded UP to
 %        the next bin edge, so every percentile is conservative by at most
-%        bin_dB.
+%        bin_dB (separable, grid) or 2*bin_dB (closed form: each cell
+%        also takes its larger end gain).
 %     2. Scan modes differ only in how long they dwell at each tilt, so a
 %        mode is a weight vector over the tilts (T.W, modes by tilts). Any
 %        mode's distribution is T.W(m, :) applied to the tilt
@@ -225,7 +226,7 @@ T.scans = mode_scans;
 T.notes = [
     "M.2069-0 Annex 1 random mode: time-weighted pointing, uniform in azimuth within each elevation step"
     "Gain slices by gain_slice_rev1, method """ + T.slice_method + """ (no sampling noise)"
-    "Gains rounded up to the next " + compose("%.6g", T.bin_dB) + " dB bin edge (conservative by at most one bin)"
+    "Gains rounded up to the next " + compose("%.6g", T.bin_dB) + " dB bin edge (conservative by at most one bin; two for closed-form slices)"
     "Full 360 deg rotation only; polarization mismatch not modeled (as in radar_mutual_gain_cdf_rev1)"];
 T.created = datetime("now");
 end

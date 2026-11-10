@@ -1,0 +1,5 @@
+check,value,unit,worst_case
+random mixtures (max exceedance excess),0,probability,"-"
+transition window 99%,1.35,dB above envelope,"VCP 34 SAILSx1, 6 cuts, then VCP 212 SAILSx3 AVSET 6.4"
+transition window 99.9%,0.650000000000006,dB above envelope,"VCP 32, 2 cuts, then VCP 212 SAILSx3 AVSET 6.4"
+transition window 99.99%,0,dB above envelope,"VCP 35, 1 cuts, then VCP 35"

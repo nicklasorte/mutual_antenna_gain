@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+F1,The two models agree,"Property test: random patterns, tilts, rates, sectors and takeoff angles; exact vs Monte Carlo order-statistic band","500 random cases, no failure",Pass,"0 crashed. 500 random cases (statgain, F.1245, random off-axis tables, NSSL WSR-88D, ASR-11 CSC^2; 1 to 4 tilts; 20% sectors), 1e+06 samples each: 0 outside the band (alpha 2.5e-06 per check).",docs/figures/redteam/F1_rev1.csv,None,None,506.854258,0

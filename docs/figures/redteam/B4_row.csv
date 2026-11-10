@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+B4,The closed-form slice (T1) is exact,"WSR-88D closed form vs a 0.0005 deg azimuth grid at el = tilt, negative el and tilt 19.5 deg","Within one bin, never low",Pass,"10 edge cases (el = tilt, negative el, tilt 19.5 deg): closed form minus grid 0.00 to 0.05 dB over 0 to 100%; 0 outside [0, one bin].",docs/figures/redteam/B4_rev1.csv,None,None,0.5272485,0

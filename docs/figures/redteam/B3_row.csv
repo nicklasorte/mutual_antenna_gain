@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+B3,Single-precision storage does not hurt the tail,Grid nodes from B2: single-precision table vs double-precision exact slices at 99.999% and 99.9999%,Same bin,Pass,0 of 1204 node checks differ.,docs/figures/redteam/B2_rev1.csv,None,None,0,0
