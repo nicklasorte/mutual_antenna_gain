@@ -21,11 +21,15 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %   is uniform in azimuth within each elevation step, with step weights
 %   proportional to the step durations (draw_state_random in
 %   radar_mutual_gain_cdf_rev1). This function replaces the random draw
-%   with a midpoint azimuth grid, so the distribution has no sampling noise:
-%     1. For each unique beam tilt and each grid elevation, evaluate
-%        antenna_gain_rev1 on n = 360/az_step_deg azimuths and histogram the
-%        gains on a bin_dB grid. Gains are rounded UP to the next bin edge,
-%        so every percentile is conservative by at most bin_dB.
+%   with exact slices:
+%     1. For each unique beam tilt and each grid elevation,
+%        gain_slice_rev1 returns the gain distribution on a bin_dB grid.
+%        It uses the closed form of the azimuth share for patterns of the
+%        off-axis angle only (WSR-88D tables, statgain, F.1245,
+%        parabolic), a shifted azimuth cut for separable apertures (ASR-9,
+%        ASR-11), and the azimuth grid otherwise. Gains are rounded UP to
+%        the next bin edge, so every percentile is conservative by at most
+%        bin_dB.
 %     2. Scan modes differ only in how long they dwell at each tilt, so a
 %        mode is a weight vector over the tilts (T.W, modes by tilts). Any
 %        mode's distribution is T.W(m, :) applied to the tilt
@@ -44,8 +48,10 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %     .el_grid_deg   elevations of the other station, deg above the local
 %                    horizontal (default -5:0.05:10)
 %     .bin_dB        gain bin width, dB (default 0.05)
-%     .az_step_deg   azimuth grid step, deg (default 0.001, about 1/1000
-%                    of the WSR-88D beamwidth)
+%     .az_step_deg   azimuth grid step for separable and grid slices, deg
+%                    (default 0.001, about 1/1000 of the WSR-88D beamwidth)
+%     .slice_method  "auto" (default) or force "closed_form", "separable"
+%                    or "grid" (gain_slice_prep_rev1)
 %     .parallel_flag 1 runs the elevations in parfor (default 0)
 %
 %   T struct:
@@ -55,7 +61,9 @@ function T = gain_dist_table_rev1(ant, mode_scans, opts)
 %                   (k0 + b - 1)*bin_dB, the upper edge of its interval
 %     .P_tx         single, B-by-E-by-K probability mass per bin
 %     .P_rx         same for the receive pattern ([] when ant_rx is absent)
-%     .gmax_tx      E-by-K maximum gain toward the station (dBi, exact)
+%     .gmax_tx      E-by-K maximum gain toward the station (dBi; exact for
+%                   closed-form and separable slices)
+%     .slice_method, .slice_method_rx, .slice_opts  how the slices were made
 %     .gmax_rx      same for receive ([] when ant_rx is absent)
 %     .W            M-by-K time weight of each tilt in each mode (rows sum
 %                   to 1)
@@ -121,36 +129,34 @@ for m = 1:n_mode
     W(m, :) = W(m, :)/sum(W(m, :));
 end
 
-% ---- Antennas
-pa_tx = antenna_prepare_rev1(ant);
-check_antenna(pa_tx, "ant");
+% ---- Antennas (gain_slice_prep_rev1 picks the exact method per pattern)
+slice_opts = struct("bin_dB", opts.bin_dB, "az_step_deg", opts.az_step_deg, "method", opts.slice_method);
+S_tx = gain_slice_prep_rev1(ant, slice_opts);
+check_antenna(S_tx.pa, "ant");
 has_rx = ~isempty(opts.ant_rx);
-pa_rx = pa_tx;                                  % unused unless has_rx (defined for parfor)
+S_rx = S_tx;                                    % unused unless has_rx (defined for parfor)
 if has_rx
-    pa_rx = antenna_prepare_rev1(opts.ant_rx);
-    check_antenna(pa_rx, "opts.ant_rx");
+    S_rx = gain_slice_prep_rev1(opts.ant_rx, slice_opts);
+    check_antenna(S_rx.pa, "opts.ant_rx");
 end
 
 % ---- Gain histograms
 el = opts.el_grid_deg(:);
 n_el = numel(el);
-n_az = round(360/opts.az_step_deg);
-az = ((1:n_az)' - 0.5)*360/n_az;                % midpoint rule: uniform time weight
 [H_tx, H_rx] = deal(cell(n_el, 1));
 [gmax_tx, gmax_rx] = deal(NaN(n_el, n_tilt));
-dg = opts.bin_dB;
 if opts.parallel_flag
     parfor ie = 1:n_el
-        [H_tx{ie}, gmax_tx(ie, :)] = el_hist(pa_tx, el(ie), tilt, az, dg);
+        [H_tx{ie}, gmax_tx(ie, :)] = el_hist(S_tx, el(ie), tilt);
         if has_rx
-            [H_rx{ie}, gmax_rx(ie, :)] = el_hist(pa_rx, el(ie), tilt, az, dg);
+            [H_rx{ie}, gmax_rx(ie, :)] = el_hist(S_rx, el(ie), tilt);
         end
     end
 else
     for ie = 1:n_el
-        [H_tx{ie}, gmax_tx(ie, :)] = el_hist(pa_tx, el(ie), tilt, az, dg);
+        [H_tx{ie}, gmax_tx(ie, :)] = el_hist(S_tx, el(ie), tilt);
         if has_rx
-            [H_rx{ie}, gmax_rx(ie, :)] = el_hist(pa_rx, el(ie), tilt, az, dg);
+            [H_rx{ie}, gmax_rx(ie, :)] = el_hist(S_rx, el(ie), tilt);
         end
     end
 end
@@ -175,7 +181,10 @@ T.mode_names = opts.mode_names;
 T.tilt_deg = tilt;
 T.el_grid_deg = el;
 T.bin_dB = opts.bin_dB;
-T.az_step_deg = 360/n_az;
+T.az_step_deg = S_tx.az_step_deg;
+T.slice_method = S_tx.method;
+T.slice_method_rx = S_rx.method;
+T.slice_opts = slice_opts;
 T.k0 = k_lo;
 T.P_tx = P_tx;
 T.P_rx = P_rx;
@@ -188,32 +197,27 @@ T.ant_rx = opts.ant_rx;
 T.scans = mode_scans;
 T.notes = [
     "M.2069-0 Annex 1 random mode: time-weighted pointing, uniform in azimuth within each elevation step"
-    "Deterministic midpoint azimuth grid, " + compose("%.6g", T.az_step_deg) + " deg (no sampling noise)"
+    "Gain slices by gain_slice_rev1, method """ + T.slice_method + """ (no sampling noise)"
     "Gains rounded up to the next " + compose("%.6g", T.bin_dB) + " dB bin edge (conservative by at most one bin)"
     "Full 360 deg rotation only; polarization mismatch not modeled (as in radar_mutual_gain_cdf_rev1)"];
 T.created = datetime("now");
 end
 
 % =========================================================================
-function [h, gmax] = el_hist(pa, el, tilt, az, dg)
+function [h, gmax] = el_hist(S, el, tilt)
 % Gain histograms at one elevation for every tilt (bins are columns of h.p).
 n_tilt = numel(tilt);
-z = zeros(size(az));
-k = cell(n_tilt, 1);
+hs = cell(n_tilt, 1);
 gmax = zeros(1, n_tilt);
 for it = 1:n_tilt
-    st = struct("mech_az", az, "tilt", z + tilt(it), "steer_az", z, "steer_el", z);
-    g = antenna_gain_rev1(pa, 0, el, st);
-    % Round up to the bin edge; the 1e-9 bin tolerance keeps gains that
-    % sit on an edge (round-off) from moving up a full bin.
-    k{it} = ceil(g/dg - 1e-9);
-    gmax(it) = max(g);
+    hs{it} = gain_slice_rev1(S, tilt(it), el);
+    gmax(it) = hs{it}.gmax;
 end
-k_lo = min(cellfun(@min, k));
-k_hi = max(cellfun(@max, k));
+k_lo = min(cellfun(@(x) x.k_lo, hs));
+k_hi = max(cellfun(@(x) x.k_lo + numel(x.p) - 1, hs));
 p = zeros(k_hi - k_lo + 1, n_tilt);
 for it = 1:n_tilt
-    p(:, it) = accumarray(k{it} - k_lo + 1, 1, [k_hi - k_lo + 1, 1])/numel(az);
+    p(hs{it}.k_lo - k_lo + (1:numel(hs{it}.p)), it) = hs{it}.p;
 end
 h = struct("k_lo", k_lo, "p", p);
 end
@@ -282,7 +286,8 @@ end
 % -------------------------------------------------------------------------
 function opts = fill_opts(opts)
 d = struct("name", "radar", "mode_names", strings(1, 0), "ant_rx", [], ...
-    "el_grid_deg", -5:0.05:10, "bin_dB", 0.05, "az_step_deg", 0.001, "parallel_flag", 0);
+    "el_grid_deg", -5:0.05:10, "bin_dB", 0.05, "az_step_deg", 0.001, "parallel_flag", 0, ...
+    "slice_method", "auto");
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i})

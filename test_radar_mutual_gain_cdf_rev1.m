@@ -672,6 +672,28 @@ classdef test_radar_mutual_gain_cdf_rev1 < matlab.unittest.TestCase
             testCase.verifyGreaterThan(max(t.g12_dBi), gmax - 10);
         end
 
+        function timeSeriesTrialsStartAnywhereInScanCycle(testCase)
+            % Red team F2, fault 10: each time-series trial must start at
+            % a random point of the scan cycle, not at its first step.
+            % Radar 1 steps through six tilts (0 to 15 deg), one 5 s
+            % revolution each; the other radar sits 9 deg above it. Trials
+            % are 5 s long, so a trial sees the tilt-9 main beam only if
+            % it starts near that step: with random starts, P(none of 40)
+            % = (5/6)^40, about 0.07%. Starting every trial at tilt 0
+            % caps radar 1's gain at its 9 deg off-axis level.
+            s1 = struct('name', 'A', 'tx', struct('g_max_dBi', 46), 'scan', struct( ...
+                'type', 'mech_rotating', 'rate_deg_s', 72 + zeros(6, 1), 'tilt_deg', (0:3:15)'));
+            s2 = struct('name', 'B', 'tx', struct('g_max_dBi', 15), ...
+                'scan', struct('type', 'mech_rotating', 'rate_deg_s', 75));
+            o = struct('seed', 21, 'mode', 'time_series', 'duration_s', 5, 'n_trials', 40, ...
+                'el12_deg', 9, 'el21_deg', -9);
+            r = radar_mutual_gain_cdf_rev1(s1, s2, o);
+            p1 = antenna_prepare_rev1(s1.tx);
+            g1_at_9 = antenna_gain_rev1(p1, 0, 9, struct('mech_az', 0, 'tilt', 0, 'steer_az', 0, 'steer_el', 0));
+            best_if_stuck = g1_at_9 + 15;                 % radar 1 at tilt 0, radar 2 at its peak
+            testCase.verifyGreaterThan(max(r.g12_dBi), best_if_stuck + 10);
+        end
+
         function multifaceUsesNearestFace(testCase)
             % Independent check of face selection: with faces at 0, 90,
             % 180, 270 deg and random beam azimuths, the fraction of time

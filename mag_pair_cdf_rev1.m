@@ -32,7 +32,10 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %     .interp       "quantile" (default) interpolates between the two
 %                   neighboring grid elevations in quantile space (no false
 %                   double peaks); "nearest" uses the nearest grid
-%                   elevation
+%                   elevation; "exact" computes every slice at the pair's
+%                   own elevations with gain_slice_rev1 (no interpolation
+%                   error; slower for many tilts; tables made after
+%                   gain_slice_rev1 only)
 %     .parallel_flag 1 runs the pairs in parfor (default 0)
 %
 %   Scan modes: every pair of included modes (tx mode, rx mode) is
@@ -83,8 +86,13 @@ end
 if abs(T_tx.bin_dB - T_rx.bin_dB) > 1e-12
     error("mag_pair:binMismatch", "T_tx and T_rx must use the same bin_dB (%g and %g).", T_tx.bin_dB, T_rx.bin_dB);
 end
-check_range(el_tx_deg, T_tx.el_grid_deg, "el_tx_deg", T_tx.name);
-check_range(el_rx_deg, T_rx.el_grid_deg, "el_rx_deg", T_rx.name);
+if opts.interp == "exact"
+    check_range(el_tx_deg, [-90; 90], "el_tx_deg", T_tx.name);
+    check_range(el_rx_deg, [-90; 90], "el_rx_deg", T_rx.name);
+else
+    check_range(el_tx_deg, T_tx.el_grid_deg, "el_tx_deg", T_tx.name);
+    check_range(el_rx_deg, T_rx.el_grid_deg, "el_rx_deg", T_rx.name);
+end
 
 % ---- Mode selection and weights. Only tilts with weight are kept.
 mt = select_modes(T_tx, opts.tx_modes, "tx_modes");
@@ -100,16 +108,8 @@ Wk = kron(Wr, Wt);                               % mode-pair weights on tilt pai
 [nm_t, nm_r] = ndgrid(T_tx.mode_names(mt), T_rx.mode_names(mr));
 mode_pairs = nm_t(:) + " | " + nm_r(:);
 
-P_tx = T_tx.P_tx(:, :, kt);
-G_tx = T_tx.gmax_tx(:, kt);
-if isempty(T_rx.P_rx)
-    P_rx = T_rx.P_tx(:, :, kr);
-    G_rx = T_rx.gmax_tx(:, kr);
-else
-    P_rx = T_rx.P_rx(:, :, kr);
-    G_rx = T_rx.gmax_rx(:, kr);
-end
-k_off = T_tx.k0 + T_rx.k0;                       % conv bin c holds (k_off + c - 1)*bin_dB
+sd_t = side(T_tx, kt, false, opts.interp);
+sd_r = side(T_rx, kr, true, opts.interp);
 dg = T_tx.bin_dB;
 
 % ---- Pairs
@@ -121,20 +121,16 @@ worst = zeros(n_pair, n_pct);
 mode_pct = NaN(n_pair, n_mp, n_pct);
 max_path = NaN(n_pair, 1);
 curve = cell(n_pair, 1);
-grid_t = T_tx.el_grid_deg;
-grid_r = T_rx.el_grid_deg;
 o = opts;
 if opts.parallel_flag
     parfor ip = 1:n_pair
         [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(P_tx, G_tx, grid_t, el_tx_deg(ip), P_rx, G_rx, grid_r, el_rx_deg(ip), ...
-            Wk, k_off, dg, o);
+            one_pair(sd_t, el_tx_deg(ip), sd_r, el_rx_deg(ip), Wk, dg, o);
     end
 else
     for ip = 1:n_pair
         [pct_env(ip, :), worst(ip, :), mode_pct(ip, :, :), max_path(ip), curve{ip}] = ...
-            one_pair(P_tx, G_tx, grid_t, el_tx_deg(ip), P_rx, G_rx, grid_r, el_rx_deg(ip), ...
-            Wk, k_off, dg, o);
+            one_pair(sd_t, el_tx_deg(ip), sd_r, el_rx_deg(ip), Wk, dg, o);
     end
 end
 
@@ -161,10 +157,10 @@ R.notes = [
 end
 
 % =========================================================================
-function [q_env, worst, q_mode, max_path, curve] = one_pair(P_tx, G_tx, grid_t, et, ...
-    P_rx, G_rx, grid_r, er, Wk, k_off, dg, opts)
-pt = slices_at(P_tx, grid_t, et, opts.interp);        % bins by tx tilts
-pr = slices_at(P_rx, grid_r, er, opts.interp);        % bins by rx tilts
+function [q_env, worst, q_mode, max_path, curve] = one_pair(sd_t, et, sd_r, er, Wk, dg, opts)
+[pt, k0t, gt] = slices_at(sd_t, et, opts.interp);     % bins by tx tilts
+[pr, k0r, gr] = slices_at(sd_r, er, opts.interp);     % bins by rx tilts
+k_off = k0t + k0r;                                    % conv bin c holds (k_off + c - 1)*bin_dB
 nt = size(pt, 2);
 nr = size(pr, 2);
 L = size(pt, 1) + size(pr, 1) - 1;
@@ -182,15 +178,15 @@ n_mp = size(PM, 2);
 q_mode = NaN(1, n_mp, n_pct);
 for j = 1:n_pct
     lim = 1 - opts.pct(j)/100;
-    for m = 1:n_mp
-        b = find(E(:, m) <= lim + 1e-13, 1);          % smallest gain with exceedance <= 1 - p
-        q_mode(1, m, j) = gain(b);
-    end
+    % Smallest gain with exceedance <= 1 - p, every mode pair at once
+    % (max of a logical returns the first true row).
+    [~, b] = max(E <= lim + 1e-13, [], 1);
+    q_mode(1, :, j) = gain(b);
 end
 [q_env, worst] = max(q_mode, [], 2);
 q_env = reshape(q_env, 1, n_pct);
 worst = reshape(worst, 1, n_pct);
-max_path = max(gmax_at(G_tx, grid_t, et)) + max(gmax_at(G_rx, grid_r, er));
+max_path = max(gt) + max(gr);
 curve = [];
 if opts.return_curve
     e_env = max(E, [], 2);
@@ -201,51 +197,74 @@ end
 end
 
 % -------------------------------------------------------------------------
-function p = slices_at(P, grid, el, how)
-% Distributions of every tilt at elevation el (bins by tilts, double).
-[i, a] = bracket(grid, el);
-n_tilt = size(P, 3);
+function [p, k0, gmax] = slices_at(sd, el, how)
+% Distributions of every tilt at elevation el (bins by tilts, double), the
+% bin index k0 of row 1, and each tilt's largest gain toward the station.
+if how == "exact"
+    n_tilt = numel(sd.tilt);
+    hs = cell(n_tilt, 1);
+    gmax = zeros(1, n_tilt);
+    for t = 1:n_tilt
+        hs{t} = gain_slice_rev1(sd.S, sd.tilt(t), el);
+        gmax(t) = hs{t}.gmax;
+    end
+    k0 = min(cellfun(@(x) x.k_lo, hs));
+    n = max(cellfun(@(x) x.k_lo + numel(x.p), hs)) - k0;
+    p = zeros(n, n_tilt);
+    for t = 1:n_tilt
+        p(hs{t}.k_lo - k0 + (1:numel(hs{t}.p)), t) = hs{t}.p;
+    end
+    return
+end
+k0 = sd.k0;
+gmax = gmax_at(sd.G, sd.grid, el);
+[i, a] = bracket(sd.grid, el);
+n_tilt = size(sd.P, 3);
 if how == "nearest" || a == 0 || a == 1
     if how == "nearest"
         i = i + (a >= 0.5);
     else
         i = i + a;
     end
-    p = double(reshape(P(:, i, :), [], n_tilt));
+    p = double(reshape(sd.P(:, i, :), [], n_tilt));
     return
 end
-p0 = double(reshape(P(:, i, :), [], n_tilt));
-p1 = double(reshape(P(:, i + 1, :), [], n_tilt));
-p = zeros(size(p0));
-for t = 1:n_tilt
-    p(:, t) = quantile_interp(p0(:, t), p1(:, t), a);
-end
+p0 = double(reshape(sd.P(:, i, :), [], n_tilt));
+p1 = double(reshape(sd.P(:, i + 1, :), [], n_tilt));
+p = quantile_interp(p0, p1, a);
 end
 
 % -------------------------------------------------------------------------
 function p = quantile_interp(p0, p1, a)
-% Displacement interpolation between two distributions on the same bins:
-% Q(u) = (1 - a)*Q0(u) + a*Q1(u) for every probability level u, rounded up
-% to a bin (conservative). Considered: linear mixing of the two pmfs
-% ((1 - a)*p0 + a*p1), which leaves two peaks where the gain should move.
-F0 = cumsum(p0);
-F0 = F0/F0(end);
-F1 = cumsum(p1);
-F1 = F1/F1(end);
-u = unique([F0; F1]);
-u = u(u > 0);
-q = (1 - a)*q_index(F0, u) + a*q_index(F1, u);
-b = ceil(q - 1e-9);
-p = accumarray(b, diff([0; u]), size(p0));
+% Displacement interpolation between two distributions on the same bins,
+% every column (tilt) at once: Q(u) = (1 - a)*Q0(u) + a*Q1(u) for every
+% probability level u, rounded up to a bin (conservative). Considered:
+% linear mixing of the two pmfs ((1 - a)*p0 + a*p1), which leaves two
+% peaks where the gain should move; a loop over columns with unique and
+% interp1 (rev 1), about 60% of the pair time.
+[n, K] = size(p0);
+F0 = cumsum(p0, 1);
+F0 = F0./F0(end, :);
+F1 = cumsum(p1, 1);
+F1 = F1./F1(end, :);
+u = sort([F0; F1], 1);                           % every breakpoint of both CDFs
+q = (1 - a)*(count_less(F0, u) + 1) + a*(count_less(F1, u) + 1);
+b = min(max(ceil(q - 1e-9), 1), n);
+m = diff([zeros(1, K); u], 1, 1);
+col = repmat(1:K, size(u, 1), 1);
+p = accumarray([b(:), col(:)], m(:), [n K]);
 end
 
 % -------------------------------------------------------------------------
-function k = q_index(F, u)
-% Smallest bin k with F(k) >= u, for each u in (0, 1] (F nondecreasing,
-% F(end) = 1). The leading 0 (bin 0) gives interp1 at least two points when
-% all the mass is in one bin; u > 0 never maps to bin 0.
-[Fu, ia] = unique([0; F], "first");
-k = interp1(Fu, ia - 1, u, "next");
+function c = count_less(F, u)
+% For each column, the number of F values strictly below each u value (F
+% and u sorted ascending): smallest k with F(k) >= u is c + 1. One stable
+% sort per column; u comes first in ties, so equal values do not count.
+nu = size(u, 1);
+[~, I] = sort([u; F], 1);
+isF = I > nu;
+cF = cumsum(isF, 1);
+c = reshape(cF(~isF), nu, []);
 end
 
 % -------------------------------------------------------------------------
@@ -256,6 +275,31 @@ if a == 0
     g = G(i, :);
 else
     g = (1 - a)*G(i, :) + a*G(i + 1, :);
+end
+end
+
+% -------------------------------------------------------------------------
+function sd = side(T, k, is_rx, how)
+% One end of the path: its stored slices, or a slice cache for "exact".
+sd = struct("grid", T.el_grid_deg, "k0", T.k0, "tilt", T.tilt_deg(k), "S", []);
+use_rx = is_rx && ~isempty(T.P_rx);
+if use_rx
+    sd.P = T.P_rx(:, :, k);
+    sd.G = T.gmax_rx(:, k);
+else
+    sd.P = T.P_tx(:, :, k);
+    sd.G = T.gmax_tx(:, k);
+end
+if how == "exact"
+    if ~isfield(T, "slice_opts")
+        error("mag_pair:oldTable", "Table %s predates exact slices; rebuild it with gain_dist_table_rev1.", T.name);
+    end
+    ant = T.ant;
+    if use_rx
+        ant = T.ant_rx;
+    end
+    sd.S = gain_slice_prep_rev1(ant, T.slice_opts);
+    sd.P = [];
 end
 end
 
@@ -340,8 +384,8 @@ if ~isempty(extra)
     error("mag_pair:unknownOption", "Unknown option(s): %s.", strjoin(extra, ", "));
 end
 opts.interp = string(opts.interp);
-if ~ismember(opts.interp, ["quantile", "nearest"])
-    error("mag_pair:badInterp", "opts.interp must be ""quantile"" or ""nearest"".");
+if ~ismember(opts.interp, ["quantile", "nearest", "exact"])
+    error("mag_pair:badInterp", "opts.interp must be ""quantile"", ""nearest"" or ""exact"".");
 end
 if any(opts.pct < 0 | opts.pct >= 100)
     error("mag_pair:badPct", "opts.pct values must lie in [0, 100).");

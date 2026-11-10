@@ -11,6 +11,20 @@ This plan covers the two mutual antenna gain (MAG) models in the repository:
 
 Nothing in this plan is built yet, except one prototype that is labeled as such. Every baseline number was measured on 2026-11-10 in MATLAB R2025b on the Apple silicon Mac. Every target is an estimate until its work package is done.
 
+## Status, 2026-11-10 (branch `feature/exact-slices`)
+
+| Package | Status | Result |
+| --- | --- | --- |
+| K3 Pin references | Done | `test_regression_rev5`: three `vcp_sweep_rev5.csv` rows reproduced to 1e-10 relative; two-part outputs pinned in `test_data/mag_lookup_reference_rev1.csv` (5 pairs, 74 modes, 6 percentiles) |
+| K2 Gain-slice kernel | Done | `gain_slice_prep_rev1`, `gain_slice_rev1`: closed form, separable, grid; full rotation or sector (azimuth interval). Covers every antenna type |
+| T1 Closed-form slice | Done | Within one bin of the azimuth grid for every pattern, geometry and sector tested. Each table cell is split until it spans at most one bin, so the bound stays within one bin |
+| T2 Shift rule (separable) | Done in the kernel | Identical to the azimuth grid (same samples), binary search per slice |
+| T3 Part 2 | Partly done | `opts.interp = "exact"` added (33 ms per pair, within 0.1 dB of interpolation). Interpolation vectorized and percentile search vectorized: 4.5 ms per pair against 6.4 ms on main (1.4 times faster), identical results. The 2 ms target is not met |
+| K1 Shared scan clock | Moved to step 6 | Its only new consumer is the event library; moving it now would touch both pinned models for no gain yet |
+| F2 Fault seeding | Done (first set) | `redteam_fault_seed_rev1`: 10 planted faults across both models. First run caught 9; the miss (time-series trials all starting at the same point of the scan cycle) got a new test, `timeSeriesTrialsStartAnywhereInScanCycle`. Rerun: 10 of 10 caught (`docs/figures/fault_seed_rev1.csv`) |
+
+Measured on 2026-11-10: WSR-88D table (74 modes, 21 tilts, 301 elevations) 2.0 s, down from 127 s; ASR-11 table 0.4 s, down from 15 s. Worked pair (2.0°/1.7°): every percentile unchanged except 99.9%, up one bin (43.55 to 43.60 dBi), as the conservative closed form allows.
+
 ## 1. Summary
 
 1. **Neither model is slow per sample.** The original model costs 132 ns per time step and 189 ns per random sample. The cost comes from how many samples a study needs: thousands of pairs, 74 scan modes, and 120 hours of clock time.
