@@ -40,7 +40,13 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       drive accuracy; the FAA tolerance is in Order JO
 %                       6310.30B, FAA-internal, TODO)
 %     .asr_jitter_mode  "per_trial" (default, one offset per trial) |
-%                       "per_rev" (new offset every revolution)
+%                       "per_rev" (new offset every revolution) |
+%                       "random_walk" (correlated drift: the rate takes a
+%                       random step each revolution, held inside the
+%                       tolerance; scan_clock_rev1)
+%     .asr_drift_step_deg_s  random_walk only: standard deviation of the
+%                       rate step per revolution (default 0.02 deg/s; no
+%                       public source, TODO)
 %     .el_path_deg      path elevation at both ends (0: horizontal
 %                       line-of-sight path, location-agnostic geometry)
 %     .el_nexrad_deg    takeoff angle at the NEXRAD: elevation of the ATC
@@ -91,11 +97,19 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       substream 1000 + j, so first_trial = j, n_trials = 1
 %                       reruns trial j of a longer run exactly (with
 %                       keep_ts1, to get its samples).
+%     .ts_method        "fixed" (default: every step of the time grid) |
+%                       "events" (only the steps where a beam is within
+%                       ts_delta_deg of the path, scan_event_windows_rev1;
+%                       per-scan maxima above out.scan_max.floor21_dBi
+%                       equal the fixed-grid maxima; ts_pct and the
+%                       time-series lobe shares are NaN)
+%     .ts_delta_deg     event window half-width in azimuth (4 deg)
 %     .dt_s             time series step (0.002 s: about one tenth of the
 %                       ASR beam transit time, 1.45/75 = 0.019 s for the
 %                       ASR-11, 1.3/75 = 0.017 s for the ASR-9)
 %     .pct              percentiles reported ([50 90 99 99.9 99.99 99.999])
-%     .parallel_flag    0 (default) | 1, passed to the CDF run
+%     .parallel_flag    0 (default) | 1: the CDF run and the time-series
+%                       trials run in parfor (identical results)
 %     .cdf_pct          percent grid of out.cdf.cdf_array12/21, 0 to 100
 %                       (default 0:1:100 plus 99.5 to 99.999)
 %     .keep_ts1         true: return the first trial of the time series in
@@ -569,145 +583,70 @@ end
 % =========================================================================
 function [S, ts_pct] = scan_maxima(sys_n, sys_a, opts)
 % Time series of both antennas from random start phases; maximum MAG per
-% ASR-11 revolution, NEXRAD cut and NEXRAD volume.
+% ASR-11 revolution, NEXRAD cut and NEXRAD volume. The scan clock is
+% scan_clock_rev1 (shared with the event library and the pair time
+% series). opts.ts_method = "events" evaluates only the event windows of
+% scan_event_windows_rev1, a subset of the same grid; trials run in parfor
+% when opts.parallel_flag is 1.
 pn = struct("tx", antenna_prepare_rev1(sys_n.tx), "rx", antenna_prepare_rev1(sys_n.rx));
 pa = struct("tx", antenna_prepare_rev1(sys_a.tx), "rx", antenna_prepare_rev1(sys_a.rx));
-[rate_n, el_n] = nexrad_cuts(sys_n.scan);
-sec = opts.nexrad_sector_deg;
-turn = opts.nexrad_turnaround_s;
-dur_n = sec./rate_n + turn;                     % one revolution or one sector pass per cut
+spec = clock_spec(sys_n, sys_a, opts);
+el_n = spec.el_n;
 E = region_edges(setfield(pn.rx, "region_sll_dB", sys_n.region_sll_dB), ...
     setfield(pa.tx, "region_sll_dB", sys_a.region_sll_dB), opts);
-lobe_n = zeros(4, 4);                           % time-series sample counts per region pair
-lobe_m = -Inf(4, 4);                            % largest MAG per region pair
-t_vol = sum(dur_n);
-cut_start = [0; cumsum(dur_n(1:end-1))];
-rate_a = 6*sys_a.scan.rate_rpm;
-sec_a = opts.atc_sector_deg;
-t_rev = sec_a/rate_a;                           % one revolution or one sector sweep
-
+t_vol = sum(spec.sec_n./spec.rate_n + spec.turn_n);
+t_rev = spec.sec_a/spec.rate_a;                 % one revolution or one sector sweep
 t = (0:opts.dt_s:opts.duration_s)';
-n_t = numel(t);
-[rev_tab, cut_tab, vol_tab] = deal(cell(opts.n_trials, 1));
 % Time-series percentiles from a 0.01 dB histogram, so long runs (many
 % trials) need not keep every sample in memory.
 h_edges = (-80:0.01:100)';
-h_counts = zeros(numel(h_edges) - 1, 1);
-S.ts1 = [];
-for jj = 1:opts.n_trials
-    j = opts.first_trial + jj - 1;              % trial number (substream key)
-    rs = RandStream("mrg32k3a", "Seed", opts.seed);
-    rs.Substream = 1000 + j;                    % apart from the CDF substreams
-    az0_n = 360*rand(rs);
-    t0_n = t_vol*rand(rs);
-    az0_a = 360*rand(rs);
-
-    % NEXRAD: volume, cut, azimuth (one revolution per cut, as in the model)
-    tau = t + t0_n;
-    vol = floor(tau/t_vol) + 1;
-    w = tau - (vol - 1)*t_vol;
-    cut = discretize(w, [cut_start; t_vol]);
-    cut(isnan(cut)) = numel(dur_n);
-    if sec < 360
-        % Sector around opts.nexrad_sector_center_deg (from the ATC radar
-        % bearing), one pass per cut, shared sweep law.
-        u = sector_sweep_rev1(w - cut_start(cut), rate_n(cut), sec, az0_n/360*sec, ...
-            opts.nexrad_sweep_mode, turn);
-        st_n = state(mod(opts.nexrad_sector_center_deg + u - sec/2, 360), el_n(cut));
-    else
-        st_n = state(mod(az0_n + rate_n(cut).*(w - cut_start(cut)), 360), el_n(cut));
+wo = struct("delta_n_deg", opts.ts_delta_deg, "delta_a_deg", opts.ts_delta_deg, "dt_coarse_s", 0.02);
+n_tr = opts.n_trials;
+P = cell(n_tr, 1);
+if opts.parallel_flag == 1
+    parfor jj = 1:n_tr
+        P{jj} = trial_scan(jj, t, spec, pn, pa, E, h_edges, wo, opts);
     end
-    % ASR-11: revolution counted from azimuth 0 (pointing along the link
-    % direction 0 deg); one pass of the NEXRAD bearing per revolution.
-    % Rate variance, uniform in +/- jitter about 75 deg/s:
-    %   "per_trial"  one rate offset per trial (M2069 Annex 1 treatment)
-    %   "per_rev"    a new rate offset each revolution
-    jit = sys_a.scan.rate_jitter_deg_s;
-    switch sys_a.scan.jitter_mode
-        case "per_trial"
-            r = rate_a + jit*(2*rand(rs) - 1);
-            if sec_a < 360
-                % Sector: distance swept since the first sweep's leading
-                % edge; each sweep is one "revolution" row.
-                sw = az0_a/360*sec_a + r*t;
-                rev = floor(sw/sec_a) + 1;
-                u_a = sector_sweep_rev1(sw - (rev - 1)*sec_a, 1, sec_a);
-                ang = mod(sys_a.scan.sector_center_deg + u_a - sec_a/2, 360);
-            else
-                ang = az0_a + r*t;
-                rev = floor(ang/360) + 1;
-            end
-            r_rev = r + zeros(max(rev), 1);
-        case "per_rev"
-            n_rev = ceil((az0_a + (rate_a + jit)*opts.duration_s)/360) + 1;
-            r_rev = rate_a + jit*(2*rand(rs, n_rev, 1) - 1);
-            tb = [0; cumsum(360./r_rev)] - az0_a/r_rev(1);   % revolution start times
-            rev = discretize(t, tb);
-            ang = 360*(rev - 1) + (t - tb(rev)).*r_rev(rev);
+else
+    for jj = 1:n_tr
+        P{jj} = trial_scan(jj, t, spec, pn, pa, E, h_edges, wo, opts);
     end
-    st_a = state(mod(ang, 360), sys_a.scan.tilt_deg + zeros(n_t, 1));
-
-    % Geometry as in radar_mutual_gain_cdf_rev1: radar 1 = NEXRAD, the
-    % ASR-11 at 0 deg from it; the NEXRAD at 180 deg from the ASR-11.
-    e_n = opts.el_nexrad_deg;                      % takeoff angle at the NEXRAD
-    e_a = opts.el_atc_deg;                         % takeoff angle at the ATC radar
-    g12 = antenna_gain_rev1(pn.tx, 0, e_n, st_n) + antenna_gain_rev1(pa.rx, 180, e_a, st_a);
-    gA = antenna_gain_rev1(pa.tx, 180, e_a, st_a);   % ASR-11 transmit gain toward the NEXRAD
-    gN = antenna_gain_rev1(pn.rx, 0, e_n, st_n);     % NEXRAD receive gain toward the ASR-11
-    g21 = gA + gN;
-    h_counts = h_counts + histcounts(g21, h_edges)';
-    offA = wrapTo180(180 - st_a.mech_az);            % ASR-11 beam azimuth off the path
-    offN = wrapTo180(0 - st_n.mech_az);              % NEXRAD beam azimuth off the path
-    rN = region_of(offaxis_nexrad(offN, st_n.tilt, e_n), E.nexrad);
-    rA = region_of(abs(offA), E.asr11);
-    k = sub2ind([4 4], rN, rA);
-    lobe_n = lobe_n + reshape(accumarray(k, 1, [16 1]), 4, 4);
-    lobe_m = max(lobe_m, reshape(accumarray(k, g21, [16 1], @max, -Inf), 4, 4));
-    if jj == 1 && opts.keep_ts1
-        S.ts1 = struct("t_s", t, "g21_dBi", g21, "asr11_gain_dBi", gA, "nexrad_gain_dBi", gN, ...
-            "asr11_az_off_deg", offA, "nexrad_az_off_deg", offN, "nexrad_el_deg", el_n(cut));
-    end
-
-    % ---- per ASR-11 revolution (rev, cut key and vol are nondecreasing in
-    %      t, so each scan is one contiguous run of samples)
-    [first, last] = runs(rev);
-    [m21, k21] = run_max(g21, first, last);
-    m12 = run_max(g12, first, last);
-    n_r = numel(first);
-    rev_tab{jj} = table(j + zeros(n_r, 1), (1:n_r)', t(first), r_rev(rev(first)), m12, m21, ...
-        el_n(cut(k21)), gN(k21), gA(k21), offN(k21), offA(k21), t(k21), edge_flag(n_r), ...
-        'VariableNames', ["trial", "rev", "t_start_s", "rate_deg_s", "max_g12_dBi", ...
-        "max_g21_dBi", "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "asr11_gain_at_max_dBi", ...
-        "nexrad_az_off_at_max_deg", "asr11_az_off_at_max_deg", "t_at_max_s", "complete"]);
-
-    % ---- per NEXRAD cut
-    [first, last] = runs((vol - vol(1))*numel(dur_n) + cut);
-    c21 = run_max(g21, first, last);
-    c12 = run_max(g12, first, last);
-    n_c = numel(first);
-    cut_tab{jj} = table(j + zeros(n_c, 1), vol(first) - vol(1) + 1, cut(first), el_n(cut(first)), ...
-        t(first), c12, c21, edge_flag(n_c), 'VariableNames', ["trial", "volume", "cut", ...
-        "el_deg", "t_start_s", "max_g12_dBi", "max_g21_dBi", "complete"]);
-
-    % ---- per NEXRAD volume
-    [first, last] = runs(vol);
-    [v21, kv] = run_max(g21, first, last);
-    v12 = run_max(g12, first, last);
-    n_v = numel(first);
-    vol_tab{jj} = table(j + zeros(n_v, 1), (1:n_v)', t(first), v12, v21, el_n(cut(kv)), ...
-        edge_flag(n_v), 'VariableNames', ["trial", "volume", "t_start_s", "max_g12_dBi", ...
-        "max_g21_dBi", "el_at_max_deg", "complete"]);
 end
-S.asr_rev = vertcat(rev_tab{:});
-S.nexrad_cut = vertcat(cut_tab{:});
-S.nexrad_volume = vertcat(vol_tab{:});
+% Reduce in trial order (counts are integers; maxima are exact).
+h_counts = zeros(numel(h_edges) - 1, 1);
+lobe_n = zeros(4, 4);                           % time-series sample counts per region pair
+lobe_m = -Inf(4, 4);                            % largest MAG per region pair
+for jj = 1:n_tr
+    h_counts = h_counts + P{jj}.h_counts;
+    lobe_n = lobe_n + P{jj}.lobe_n;
+    lobe_m = max(lobe_m, P{jj}.lobe_m);
+end
+S.ts1 = P{1}.ts1;
+T_rev = cellfun(@(x) x.rev_tab, P, "UniformOutput", false);
+T_cut = cellfun(@(x) x.cut_tab, P, "UniformOutput", false);
+T_vol = cellfun(@(x) x.vol_tab, P, "UniformOutput", false);
+S.asr_rev = vertcat(T_rev{:});
+S.nexrad_cut = vertcat(T_cut{:});
+S.nexrad_volume = vertcat(T_vol{:});
 S.t_rev_s = t_rev;
 S.t_volume_s = t_vol;
 S.lobe_counts = lobe_n;
 S.lobe_max = lobe_m;
 S.region_edges = E;
+S.clock_spec = spec;
+S.ts_method = opts.ts_method;
 S.persistence = persistence(S.asr_rev, opts.persist_thr_dBi, t_rev, "rev");
 S.persistence_volume = persistence(S.nexrad_volume, opts.persist_thr_dBi, t_vol, "vol");
+if opts.ts_method == "events"
+    de_n = min(cellfun(@(x) x.info.delta_eff_n_deg, P));
+    de_a = min(cellfun(@(x) x.info.delta_eff_a_deg, P));
+    [S.floor21_dBi, S.floor12_dBi] = ts_floor_rev1(pn, pa, el_n, opts.el_nexrad_deg, spec.tilt_a, ...
+        opts.el_atc_deg, de_n, de_a);
+    S.share = mean(cellfun(@(x) x.info.share, P));
+    % Window samples are not a time-weighted sample of the whole run, so the
+    % histogram and the lobe counts do not apply.
+    S.lobe_counts = NaN(4, 4);
+end
 
 % ---- summaries over complete scans
 C = S.nexrad_cut(S.nexrad_cut.complete, :);
@@ -717,21 +656,160 @@ if isempty(C)
     S.by_elevation = table(zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), 'VariableNames', vn);
 else
     [G, el] = findgroups(C.el_deg);
+    % omitnan: censored cuts (events mode) carry NaN; no effect otherwise.
     S.by_elevation = table(el, splitapply(@numel, C.max_g21_dBi, G), ...
-        splitapply(@median, C.max_g21_dBi, G), splitapply(@max, C.max_g21_dBi, G), ...
-        'VariableNames', vn);
+        splitapply(@(x) median(x, "omitnan"), C.max_g21_dBi, G), ...
+        splitapply(@(x) max(x, [], "omitnan"), C.max_g21_dBi, G), 'VariableNames', vn);
 end
 R = S.asr_rev(S.asr_rev.complete, :);
 S.asr_rev_pct = table(opts.pct(:), prctile(R.max_g21_dBi, opts.pct(:)), ...
     'VariableNames', ["pct", "max_g21_dBi"]);
 
-F = cumsum(h_counts)/sum(h_counts);
-q = zeros(numel(opts.pct), 1);
-for i = 1:numel(opts.pct)
-    q(i) = h_edges(find(F >= opts.pct(i)/100, 1) + 1);   % upper edge: within 0.01 dB
+q = NaN(numel(opts.pct), 1);
+if opts.ts_method == "fixed"
+    F = cumsum(h_counts)/sum(h_counts);
+    for i = 1:numel(opts.pct)
+        q(i) = h_edges(find(F >= opts.pct(i)/100, 1) + 1);   % upper edge: within 0.01 dB
+    end
 end
 ts_pct = table(opts.pct(:), q, 'VariableNames', ["pct", "gain_dBi"]);
 S.plateaus = plateau_check(pn.rx, pa.tx, el_n, t_vol, t_rev, S.asr_rev, opts);
+end
+
+% -------------------------------------------------------------------------
+function P = trial_scan(jj, t_full, spec, pn, pa, E, h_edges, wo, opts)
+% One time-series trial: per-scan maxima and the partial counts.
+j = opts.first_trial + jj - 1;                  % trial number (substream key)
+C = scan_clock_rev1(spec, opts.seed, j, opts.duration_s);
+P = struct("info", []);
+if opts.ts_method == "events"
+    [idx, P.info] = scan_event_windows_rev1(C, opts.duration_s, opts.dt_s, wo);
+    t = t_full(idx);
+else
+    t = t_full;
+end
+[st_n, st_a, ck] = scan_clock_state_rev1(C, t);
+[~, ~, ckb] = scan_clock_state_rev1(C, [0; t_full(end)]);   % scan numbers at the trial ends
+ck0 = struct("vol", ckb.vol(1), "cut", ckb.cut(1), "rev", ckb.rev(1));
+vol = ck.vol;
+cut = ck.cut;
+rev = ck.rev;
+r_rev = ck.r_rev;
+el_n = spec.el_n;
+n_cut = numel(spec.rate_n);
+
+% Geometry as in radar_mutual_gain_cdf_rev1: radar 1 = NEXRAD, the
+% ASR-11 at 0 deg from it; the NEXRAD at 180 deg from the ASR-11.
+e_n = opts.el_nexrad_deg;                       % takeoff angle at the NEXRAD
+e_a = opts.el_atc_deg;                          % takeoff angle at the ATC radar
+g12 = antenna_gain_rev1(pn.tx, 0, e_n, st_n) + antenna_gain_rev1(pa.rx, 180, e_a, st_a);
+gA = antenna_gain_rev1(pa.tx, 180, e_a, st_a);  % ASR-11 transmit gain toward the NEXRAD
+gN = antenna_gain_rev1(pn.rx, 0, e_n, st_n);    % NEXRAD receive gain toward the ASR-11
+g21 = gA + gN;
+P.h_counts = histcounts(g21, h_edges)';
+offA = wrapTo180(180 - st_a.mech_az);           % ASR-11 beam azimuth off the path
+offN = wrapTo180(0 - st_n.mech_az);             % NEXRAD beam azimuth off the path
+rN = region_of(offaxis_nexrad(offN, st_n.tilt, e_n), E.nexrad);
+rA = region_of(abs(offA), E.asr11);
+k = sub2ind([4 4], rN, rA);
+P.lobe_n = reshape(accumarray(k, 1, [16 1]), 4, 4);
+P.lobe_m = reshape(accumarray(k, g21, [16 1], @max, -Inf), 4, 4);
+P.ts1 = [];
+if jj == 1 && opts.keep_ts1
+    P.ts1 = struct("t_s", t, "g21_dBi", g21, "asr11_gain_dBi", gA, "nexrad_gain_dBi", gN, ...
+        "asr11_az_off_deg", offA, "nexrad_az_off_deg", offN, "nexrad_el_deg", el_n(cut));
+end
+
+% ---- per ASR-11 revolution (rev, cut key and vol are nondecreasing in t,
+%      so each scan is one contiguous run of samples). Scan numbers count
+%      from the trial start, so an event run that skips a scan keeps the
+%      numbering; t_start_s is the scan's first sample (in events mode, its
+%      first window sample).
+[first, last] = runs(rev);
+[m21, k21] = run_max(g21, first, last);
+m12 = run_max(g12, first, last);
+n_r = numel(first);
+P.rev_tab = table(j + zeros(n_r, 1), rev(first) - ck0.rev + 1, t(first), r_rev(rev(first)), m12, m21, ...
+    el_n(cut(k21)), gN(k21), gA(k21), offN(k21), offA(k21), t(k21), edge_flag(n_r), ...
+    'VariableNames', ["trial", "rev", "t_start_s", "rate_deg_s", "max_g12_dBi", ...
+    "max_g21_dBi", "nexrad_el_at_max_deg", "nexrad_gain_at_max_dBi", "asr11_gain_at_max_dBi", ...
+    "nexrad_az_off_at_max_deg", "asr11_az_off_at_max_deg", "t_at_max_s", "complete"]);
+
+% ---- per NEXRAD cut
+[first, last] = runs((vol - ck0.vol)*n_cut + cut);
+c21 = run_max(g21, first, last);
+c12 = run_max(g12, first, last);
+n_c = numel(first);
+P.cut_tab = table(j + zeros(n_c, 1), vol(first) - ck0.vol + 1, cut(first), el_n(cut(first)), ...
+    t(first), c12, c21, edge_flag(n_c), 'VariableNames', ["trial", "volume", "cut", ...
+    "el_deg", "t_start_s", "max_g12_dBi", "max_g21_dBi", "complete"]);
+
+% ---- per NEXRAD volume
+[first, last] = runs(vol);
+[v21, kv] = run_max(g21, first, last);
+v12 = run_max(g12, first, last);
+n_v = numel(first);
+P.vol_tab = table(j + zeros(n_v, 1), vol(first) - ck0.vol + 1, t(first), v12, v21, el_n(cut(kv)), ...
+    edge_flag(n_v), 'VariableNames', ["trial", "volume", "t_start_s", "max_g12_dBi", ...
+    "max_g21_dBi", "el_at_max_deg", "complete"]);
+
+if opts.ts_method == "events"
+    % Every scan of the trial gets a row: scans with no window sample are
+    % censored (NaN maxima: at or below the floor), so row counts and the
+    % complete flags match the fixed grid.
+    n_r_all = ckb.rev(2) - ckb.rev(1) + 1;
+    P.rev_tab = fill_rows(P.rev_tab, "rev", (1:n_r_all)', j);
+    key1 = (ckb.vol(2) - ckb.vol(1))*n_cut + ckb.cut(2);
+    keys = (ckb.cut(1):key1)';
+    vrel = floor((keys - 1)/n_cut);
+    Kc = table(vrel + 1, keys - vrel*n_cut, 'VariableNames', ["volume", "cut"]);
+    P.cut_tab = fill_rows(P.cut_tab, ["volume", "cut"], Kc, j);
+    P.cut_tab.el_deg = el_n(P.cut_tab.cut);
+    P.vol_tab = fill_rows(P.vol_tab, "volume", (1:ckb.vol(2) - ckb.vol(1) + 1)', j);
+end
+end
+
+% -------------------------------------------------------------------------
+function T = fill_rows(T, key, K, j)
+% Rows for every scan number in K (a column, or a table of key columns);
+% scans missing from T get NaN in every other numeric column. The first
+% and last rows are incomplete (cut by the trial).
+if ~istable(K)
+    K = table(K, 'VariableNames', key);
+end
+[~, ia, ib] = intersect(K, T(:, key), "stable");
+n = height(K);
+U = table();
+for v = string(T.Properties.VariableNames)
+    if islogical(T.(v))
+        U.(v) = false(n, 1);
+    else
+        U.(v) = NaN(n, 1);
+    end
+end
+U(ia, :) = T(ib, :);
+for v = string(key)
+    U.(v) = K.(v);
+end
+U.trial = j + zeros(height(K), 1);
+U.complete = true(height(K), 1);
+U.complete([1 end]) = false;
+T = U;
+end
+
+% -------------------------------------------------------------------------
+function spec = clock_spec(sys_n, sys_a, opts)
+% Scan clock inputs (scan_clock_rev1) from the two systems and the options.
+[rate_n, el_n] = nexrad_cuts(sys_n.scan);
+center_a = 0;
+if isfield(sys_a.scan, "sector_center_deg")
+    center_a = sys_a.scan.sector_center_deg;
+end
+spec = struct("rate_n", rate_n, "el_n", el_n, "sec_n", opts.nexrad_sector_deg, ...
+    "center_n", opts.nexrad_sector_center_deg, "sweep_n", opts.nexrad_sweep_mode, ...
+    "turn_n", opts.nexrad_turnaround_s, "rate_a", 6*sys_a.scan.rate_rpm, "tilt_a", sys_a.scan.tilt_deg, ...
+    "jit_a", sys_a.scan.rate_jitter_deg_s, "jitter_mode", sys_a.scan.jitter_mode, ...
+    "drift_step_a", opts.asr_drift_step_deg_s, "sec_a", opts.atc_sector_deg, "center_a", center_a);
 end
 
 % -------------------------------------------------------------------------
@@ -993,6 +1071,7 @@ d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_d
     "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
     "nexrad_sector_deg", 360, "nexrad_sector_center_deg", 0, "nexrad_sweep_mode", "restart", ...
     "nexrad_turnaround_s", 0, "atc_sector_deg", 360, "atc_sector_center_deg", 0, "nexrad_back_dB", -55, ...
+    "ts_method", "fixed", "ts_delta_deg", 4, "asr_drift_step_deg_s", 0.02, ...
     "asr_remote_sl_dBi", 3.5, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
     "n_trials", 2, "dt_s", 0.002, "pct", [50 90 99 99.9 99.99 99.999], "parallel_flag", 0, ...
@@ -1029,8 +1108,18 @@ if ~ismember(opts.asr_pattern, ["m1851_csc2", "f1245"])
     error("radar_coupling:badAsrPattern", "opts.asr_pattern must be ""m1851_csc2"" or ""f1245"".");
 end
 opts.asr_jitter_mode = string(opts.asr_jitter_mode);
-if ~ismember(opts.asr_jitter_mode, ["per_trial", "per_rev"])
-    error("radar_coupling:badJitterMode", "opts.asr_jitter_mode must be ""per_trial"" or ""per_rev"".");
+if ~ismember(opts.asr_jitter_mode, ["per_trial", "per_rev", "random_walk"])
+    error("radar_coupling:badJitterMode", "opts.asr_jitter_mode must be ""per_trial"", ""per_rev"" or ""random_walk"".");
+end
+if opts.asr_drift_step_deg_s < 0
+    error("radar_coupling:badDrift", "opts.asr_drift_step_deg_s must be >= 0.");
+end
+opts.ts_method = string(opts.ts_method);
+if ~ismember(opts.ts_method, ["fixed", "events"])
+    error("radar_coupling:badTsMethod", "opts.ts_method must be ""fixed"" or ""events"".");
+end
+if ~isscalar(opts.ts_delta_deg) || opts.ts_delta_deg <= 1 || opts.ts_delta_deg > 45
+    error("radar_coupling:badTsDelta", "opts.ts_delta_deg must be a scalar in (1, 45] deg.");
 end
 if opts.asr_rate_jitter_deg_s < 0 || opts.asr_rate_jitter_deg_s >= 75
     error("radar_coupling:badJitter", "opts.asr_rate_jitter_deg_s must be in [0, 75) deg/s.");
@@ -1041,7 +1130,7 @@ end
 if ~isscalar(opts.atc_sector_deg) || opts.atc_sector_deg <= 0 || opts.atc_sector_deg > 360
     error("radar_coupling:badSector", "opts.atc_sector_deg must be a scalar in (0, 360].");
 end
-if opts.atc_sector_deg < 360 && opts.asr_jitter_mode == "per_rev"
+if opts.atc_sector_deg < 360 && opts.asr_jitter_mode ~= "per_trial"
     error("radar_coupling:sectorJitter", "An ATC sector needs asr_jitter_mode ""per_trial"".");
 end
 opts.nexrad_sweep_mode = string(opts.nexrad_sweep_mode);
