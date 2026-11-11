@@ -2,7 +2,7 @@
 
 MATLAB model of the mutual antenna gain (MAG, antenna coupling) between scanning radars in 2.7 GHz to 3.1 GHz, for the NTIA 2.7 GHz Retuning LOE. It follows the Rec. ITU-R M.2069-0 Annex 1 method and includes a worked example between a NOAA WSR-88D (NEXRAD) weather radar and an FAA ASR-11 airport surveillance radar, with the FAA ASR-9 as a second ATC radar.
 
-**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev5.md` (and `.docx`).
+**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev7.md` (and `.docx`); its red-team findings and plan are in `docs/rev6_redteam_plan_rev1.md`.
 
 ## Requirements
 
@@ -14,28 +14,29 @@ MATLAB R2024b or later, with the Signal Processing Toolbox (`taylorwin`, for arr
 | --- | --- |
 | Get the MAG CDF for two radars | `radar_mutual_gain_cdf_rev1(sys1, sys2, opts)` |
 | Run the WSR-88D and ASR-11 model for one VCP mode | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3))` |
-| Run the same model with an exact CDF (no sampling noise) and a takeoff angle at each end | `nexrad_asr11_mag_rev1(struct("seed", 1, "cdf_method", "exact", "el_nexrad_deg", 1.7, "el_atc_deg", 2.0))` |
+| Run the same model with a takeoff angle at each end (the CDF is exact by default; `"cdf_method", "monte_carlo"` gives the Rev 5 sampling) | `nexrad_asr11_mag_rev1(struct("seed", 1, "el_nexrad_deg", 1.7, "el_atc_deg", 2.0))` |
+| Bracket the WSR-88D pattern below the ROC specification envelope | `nexrad_asr11_mag_rev1(struct("seed", 1, "nexrad_sl_margin_dB", 3))` |
 | Get the exact random-mode MAG distribution of any two rotating radars, including sectors | `mag_exact_cdf_rev1(sys1, sys2, opts)` |
 | Aim a NEXRAD sector off the ATC radar, sweep it back and forth, or give the ATC radar a sector | `nexrad_asr11_mag_rev1(struct("seed", 1, "nexrad_sector_deg", 30, "nexrad_sector_center_deg", 10, "nexrad_sweep_mode", "bidirectional", "nexrad_turnaround_s", 0.5))`; `"atc_sector_deg"`, `"atc_sector_center_deg"` |
 | Get a sector radar's pair CDF at its bearing to the other radar | `mag_pair_cdf_rev1(T_tx, T_rx_sector, el_tx, el_rx, struct("brg_rx_deg", b))` (sector tables from `gain_dist_table_rev1`) |
 | Run the time series on event windows only (exact maxima above the floor), or in parfor | `nexrad_asr11_mag_rev1(struct("seed", 1, "ts_method", "events", "parallel_flag", 1))` |
-| Build a time-series event library once per pair of scan modes, then get any pair's per-scan maxima, persistence and corrupted-radial counts | `lib = scan_event_library_rev1(out.scan_max.clock_spec, struct("seed", 1, "n_trials", 120))`; `mag_pair_timeseries_rev1(lib, ant_n, ant_a, el_n_deg, el_a_deg)` |
+| Build a time-series event library once per pair of scan modes, then get any pair's per-scan maxima, persistence (with runs cut by a trial end counted as censored), exceedance curves and exposed-radial counts; pass vectors of takeoff angles to run a batch of pairs (about 0.4 s per pair for 120 h) | `lib = scan_event_library_rev1(out.scan_max.clock_spec, struct("seed", 1, "n_trials", 120))`; `mag_pair_timeseries_rev1(lib, ant_n, ant_a, el_n_deg, el_a_deg)` |
 | Run the same model with the ASR-9 | `nexrad_asr11_mag_rev1(struct("seed", 1, "vcp", 212, "sails", 3, "atc_radar", "asr9"))` |
 | Pattern defaults | WSR-88D: ROC specification envelope (`nexrad_pattern` "roc_spec"); "nssl_measured" (the Rev 5 baseline) is a sensitivity case. ASR remote sidelobe: +3.5 dBi ASR-11 (M.1464-2 Radar C), +5.5 dBi ASR-9 (bound from MIT LL ATC-138) |
 | Sweep every VCP mode for the ASR-9 and compare it with the ASR-11 | `example_asr9_rev1` |
 | Sweep the 74 VCP modes of the Rev 5 study | `example_nexrad_asr11_rev1` |
 | Run the sensitivity sweep | `example_sensitivity_rev1` |
 | Find how long equal or multiple scan rates stay aligned | `example_asr11_drift_rev1` |
-| Make every figure and table in the report | `report_figures_rev5` (writes `docs/figures`) |
+| Make every figure and table in the report | `report_figures_rev5` (Appendix D), `report_numbers_rev6`, `report_numbers_rev7` (Figures 10 to 14) (write `docs/figures`) |
 | Build a gain table once per radar (all 216 WSR-88D modes: every VCP option and AVSET termination; `nexrad_mode_scans_rev1("lowest")` gives the 74 Rev 5 modes) | `[s, n] = nexrad_mode_scans_rev1(); T = gain_dist_table_rev1(ant, s, struct("mode_names", n))` |
-| Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` (about 1.1 ms per pair for thousands of pairs) |
+| Get the MAG CDF of many pairs from their two takeoff angles, worst-mode envelope | `R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg)` (about 1 ms per pair with all 216 modes; percentiles by bisection, `"pct_search", "full"` for the full search) |
 | Model a site whose lowest cut is below 0.5 deg (supplemental low cut, or the lowest group moved) | `nexrad_vcp_rev1(212, low_el_deg=-0.2)`, `low_el_mode="replace"`; wrapper option `low_el_deg`; per-site table: `nexrad_mode_scans_rev1("all", low_el_deg=0.2)` |
 | Make a large pair study faster by sharing slices between nearby angles (each 0.01 deg cell gets its upper envelope, so results are never below the unrounded ones) | `mag_pair_cdf_rev1(T_tx, T_rx, el_tx, el_rx, struct("el_round_deg", 0.01))` |
 | Build both tables and run a worked pair and 1,000 random pairs | `example_mag_lookup_rev1` |
 | Check the two-step method against random-mode Monte Carlo | `validate_mag_lookup_rev1` (writes `docs/figures/mag_lookup_validation_rev1.csv`) |
 | Get one antenna's exact gain distribution at a tilt and takeoff angle, full rotation or a sector | `h = gain_slice_rev1(gain_slice_prep_rev1(ant), tilt_deg, el_deg, az_lim_deg)` |
 | Check that the tests catch planted bugs (red team F2) | `batch(parcluster("Processes"), @redteam_fault_seed_rev1, 1, {pwd}, "AutoAddClientPath", false)` |
-| Run the red-team attacks and rebuild the findings register (`docs/redteam_register_rev1.csv`) | `batch(parcluster("Processes"), @redteam_runs_rev1, 1, {"all"}, "AutoAddClientPath", false)`, then `redteam_runs_rev1("register")` (about an hour; split the attacks across several batch jobs) |
+| Run the red-team attacks and rebuild the findings register (`docs/redteam_register_rev1.csv`) | `batch(parcluster("Processes"), @redteam_runs_rev1, 1, {"all"}, "AutoAddClientPath", false)`, then `redteam_runs_rev1("register")` (about an hour; split the attacks across several batch jobs). With `struct("inputs", "rev6")` the attacks use the Rev 6 defaults and write to `docs/figures/redteam_rev6/attacks` |
 
 Every model input is in `nexrad_asr11_mag_rev1` (`assumptions` and `citations`) or `nexrad_vcp_rev1`, with a source key and URL. Values without a public source are marked TODO.
 

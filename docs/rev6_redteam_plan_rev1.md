@@ -4,6 +4,21 @@
 
 Draft of November 11, 2026. Subject: `docs/mutual_antenna_gain_methodology_report_rev6.md` (commit `dab4a44`). New evidence is in `docs/figures/redteam_rev6/`. This plan covers two things: what is wrong with or missing from the paper, and how to make the code fast enough for an RFS-scale study.
 
+## Status, 2026-11-11
+
+| Item | Status |
+| --- | --- |
+| P1 to P14 | Answered in revision 7 of the report (`docs/mutual_antenna_gain_methodology_report_rev7.md`, Section 11.6 lists each) |
+| Step 1, pin revision 6 references | Done: `make_rev6_reference_rev1`, `test_regression_rev6` (pair percentiles, worst modes, every per-scan maximum and harm count) |
+| Step 2, P6, P10, P11, P12 | Done: exact CDF is the wrapper default; bootstrap, bias wording and timings corrected in revision 7 |
+| Step 3, V1, V2, V4 | Done, differently from the plan: one batched `mag_pair_timeseries_rev1` computes each trial's states once for a batch of pairs (V1 and V3 together), builds tables once (V2), and evaluates the ATC elevation pattern once per angle (V4). 120 h, one pair: 3.5 s to 1.4 s; batch of 64: 0.42 s per pair. Outputs identical |
+| Step 4, analysis runs | Done: takeoff surface, pattern bracket, drift and run length (`report_numbers_rev7`, Figures 10 to 14) |
+| Step 5, register under revision 6 inputs | Done for A1, A2, A3, A4, C4, D2 and the NOAA case (`redteam_runs_rev1` option `inputs = "rev6"`) |
+| Step 6, V5 to V8 | V5 tried and dropped: 155 of the 216 mode weight vectors are hull vertices, so pruning saved under 30%. V6 done as a bisection percentile search (1.85 to about 1 ms per pair, same results). V7 not needed after V6. V8: the batched time series takes `parallel_flag` over chunks of pairs |
+| Step 7, figures | Done: Figures 10 to 14 |
+| Step 8, revision 7 | Drafted |
+| Step 9, independent review | Open: needs a reviewer who didn't write revision 7 |
+
 ## Summary
 
 1. **The headline numbers are at the wrong takeoff angle.** The summary states the 99.9% MAG as "at most 44.8 dBi," but that value is for a horizontal path only. With both takeoff angles at 0.5°, the same envelope gives 48.1 dBi at 99.9% and 73.2 dBi at 99.999%: 3.3 dB and 4.5 dB higher. Revision 5 showed this in Section 8, but the revision 6 summary dropped it.

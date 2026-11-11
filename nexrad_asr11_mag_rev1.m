@@ -63,8 +63,10 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       NEXRAD seen from it, deg (default el_path_deg). Both
 %                       map to the "Takeoff Angle (deg)" columns of the
 %                       2.7 GHz RFS tool.
-%     .cdf_method       "monte_carlo" (default, random-mode samples) |
-%                       "exact" (mag_exact_cdf_rev1: no sampling noise,
+%     .cdf_method       "exact" (default since revision 7; red-team
+%                       finding P6) | "monte_carlo" (random-mode samples,
+%                       the revision 5 method; Rev 5 reproductions set it).
+%                       "exact" is mag_exact_cdf_rev1: no sampling noise,
 %                       percentiles conservative by at most 0.2 dB;
 %                       out.cdf.g12_dBi and g21_dBi are empty and
 %                       out.cdf.dist21 holds the distribution)
@@ -88,6 +90,11 @@ function out = nexrad_asr11_mag_rev1(opts)
 %                       asr_jitter_mode "per_trial".
 %     .atc_sector_center_deg  ATC sector center, deg clockwise from the
 %                       bearing to the NEXRAD (default 0)
+%     .nexrad_sl_margin_dB  dB taken off the roc_spec sidelobe envelope
+%                       beyond the main beam (default 0). The specification
+%                       limits the peak sidelobes; a margin brackets a
+%                       pattern whose typical sidelobes sit below that
+%                       limit (red-team finding P4). roc_spec only; 0 to 20.
 %     .nexrad_back_dB   NEXRAD gain below peak at 90 to 180 deg off axis
 %                       (default -55, the NSSL_1998 far level held to 180
 %                       deg; no measured back lobe, TODO). nssl_measured only.
@@ -517,7 +524,8 @@ switch opts.nexrad_pattern
         env_dB = [A.nex.nssl_env_dB(1:end-1), A.nex.nssl_env_dB(end), opts.nexrad_back_dB, opts.nexrad_back_dB];
         ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, env_deg, env_dB);
     case "roc_spec"
-        ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, A.nex.roc_env_deg, A.nex.roc_env_dB);
+        ant_n = pencil_table(A.nex.g_max_dBi, A.nex.bw_deg, A.nex.roc_env_deg, ...
+            A.nex.roc_env_dB - opts.nexrad_sl_margin_dB);
     case "f1245"
         ant_n = struct("type", "f1245", "g_max_dBi", A.nex.f1245_g_max_dBi);
 end
@@ -538,7 +546,7 @@ scan_n.sweep_mode = opts.nexrad_sweep_mode;
 scan_n.turnaround_s = opts.nexrad_turnaround_s;
 sys_n = struct("name", "WSR-88D", "tx", ant_n, "rx", ant_n, "scan", scan_n);
 % First-sidelobe level that ends the main-beam region (lobe_pairs).
-sys_n.region_sll_dB = struct("nssl_measured", A.nex.nssl_env_dB(1), "roc_spec", A.nex.roc_env_dB(1), ...
+sys_n.region_sll_dB = struct("nssl_measured", A.nex.nssl_env_dB(1), "roc_spec", A.nex.roc_env_dB(1) - opts.nexrad_sl_margin_dB, ...
     "f1245", NaN).(opts.nexrad_pattern);
 
 % ---- ATC radar antenna (low beam, tx = rx)
@@ -1094,9 +1102,10 @@ end
 d = struct("nexrad_scan", "vcp", "vcp", 212, "sails", 0, "mrle", 0, "avset_top_deg", Inf, ...
     "cd_rate_deg_s", [], "low_el_deg", [], "low_el_mode", "add", "nexrad_pattern", "roc_spec", "atc_radar", "asr11", "asr_pattern", "m1851_csc2", ...
     "asr_tilt_deg", 0, "asr_rate_jitter_deg_s", 0.5, "asr_jitter_mode", "per_trial", ...
-    "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "monte_carlo", ...
+    "el_path_deg", 0, "el_nexrad_deg", NaN, "el_atc_deg", NaN, "cdf_method", "exact", ...
     "nexrad_sector_deg", 360, "nexrad_sector_center_deg", 0, "nexrad_sweep_mode", "restart", ...
     "nexrad_turnaround_s", 0, "atc_sector_deg", 360, "atc_sector_center_deg", 0, "nexrad_back_dB", -55, ...
+    "nexrad_sl_margin_dB", 0, ...
     "ts_method", "fixed", "ts_delta_deg", 4, "asr_drift_step_deg_s", 0.02, ...
     "asr_remote_sl_dBi", NaN, "persist_thr_dBi", [40 45 50 55 60 65 70], ...
     "n_samples", 5e6, "duration_s", 3600, ...
@@ -1169,6 +1178,12 @@ if opts.nexrad_turnaround_s < 0 || (opts.nexrad_turnaround_s > 0 && opts.nexrad_
 end
 if opts.nexrad_back_dB ~= -55 && opts.nexrad_pattern ~= "nssl_measured"
     error("radar_coupling:backNeedsNssl", "opts.nexrad_back_dB applies to nexrad_pattern ""nssl_measured"" only.");
+end
+if opts.nexrad_sl_margin_dB ~= 0 && opts.nexrad_pattern ~= "roc_spec"
+    error("radar_coupling:marginNeedsRoc", "opts.nexrad_sl_margin_dB applies to nexrad_pattern ""roc_spec"" only.");
+end
+if ~isscalar(opts.nexrad_sl_margin_dB) || opts.nexrad_sl_margin_dB < 0 || opts.nexrad_sl_margin_dB > 20
+    error("radar_coupling:badMargin", "opts.nexrad_sl_margin_dB must be a scalar from 0 to 20 dB.");
 end
 if opts.nexrad_back_dB > -35
     error("radar_coupling:badBack", "opts.nexrad_back_dB must be at or below the -35 dB first sidelobe.");

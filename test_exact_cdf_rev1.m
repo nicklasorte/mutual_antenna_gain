@@ -18,7 +18,7 @@ tc.TestData.sys_a = o.sys_asr11;
 tc.TestData.sys_n = struct("name", "WSR-88D", "tx", o.sys_nexrad.tx, "rx", o.sys_nexrad.tx, "scan", scan_n);
 tc.TestData.pct = [90 99 99.9 99.99 99.999];
 tc.TestData.n_mc = 4e6;
-tc.TestData.small = struct("seed", 3, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, ...
+tc.TestData.small = struct("seed", 3, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "cdf_method", "monte_carlo", ...
     "vcp", 212, "sails", 3, "avset_top_deg", 6.4);
 end
 

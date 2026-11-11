@@ -148,6 +148,67 @@ verifyEqual(tc, p.scan_max.lobe_counts, tc.TestData.fixed.scan_max.lobe_counts);
 verifyEqual(tc, p.ts_pct, tc.TestData.fixed.ts_pct);
 end
 
+function testBatchParallelEqualsSerial(tc)
+% parfor over chunks of pairs (red-team plan V8) gives the serial result.
+assumeTrue(tc, ~isempty(ver("parallel")) && canUseParallelPool, "No parallel pool available.");
+if isempty(gcp("nocreate"))
+    parpool("Processes", 2);
+end
+w = tc.TestData.fixed;
+lib = scan_event_library_rev1(w.scan_max.clock_spec, struct("seed", 4, "n_trials", 2, "duration_s", 900));
+en = [0; 0.5; 1; 1.5];
+ea = [0; 0.3; -0.2; 0.8];
+o = struct("batch_size", 2, "keep_scans", true);
+A = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, en, ea, o);
+o.parallel_flag = 1;
+B = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, en, ea, o);
+verifyEqual(tc, B, A);
+end
+
+function testBatchEqualsSinglePairs(tc)
+% A batch of pairs (several chunks) equals each pair run alone: every
+% per-scan maximum, harm count and summary (red-team plan V1 to V3).
+d = tc.TestData;
+w = d.fixed;
+lib = scan_event_library_rev1(w.scan_max.clock_spec, struct("seed", 3, "n_trials", 2, "duration_s", 600));
+el_n = [0; 0.5; 1.7; -0.3; 2.4];
+el_a = [0; 0.3; 2.0; 0.1; -0.2];
+B = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, el_n, el_a, ...
+    struct("batch_size", 2, "keep_scans", true));
+verifyEqual(tc, numel(B), numel(el_n));
+for p = 1:numel(el_n)
+    S = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, el_n(p), el_a(p));
+    for f = ["asr_rev", "nexrad_cut", "nexrad_volume", "radial_cuts", "persistence", ...
+            "persistence_volume", "radial_summary", "exceedance"]
+        verifyEqual(tc, B(p).(f), S.(f), sprintf("pair %d, %s", p, f));
+    end
+    verifyEqual(tc, [B(p).floor21_dBi B(p).el_n_deg B(p).el_a_deg], [S.floor21_dBi el_n(p) el_a(p)]);
+end
+L = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, el_n, el_a);
+verifyEqual(tc, height(L(1).asr_rev), 0, "a batch drops the per-scan tables by default");
+verifyEqual(tc, L(3).persistence, B(3).persistence);
+end
+
+function testExceedanceAndCensoring(tc)
+% The exceedance table agrees with the persistence shares, and a run that
+% touches a trial end is counted as censored.
+d = tc.TestData;
+w = d.fixed;
+lib = scan_event_library_rev1(w.scan_max.clock_spec, struct("seed", 5, "n_trials", 2, "duration_s", 900));
+R = mag_pair_timeseries_rev1(lib, w.sys_nexrad.tx, w.sys_asr11.tx, 0, 0);
+E = R.exceedance;
+for k = 1:height(R.persistence)
+    thr = R.persistence.threshold_dBi(k);
+    i = find(abs(E.gain_dBi - thr) < 1e-9, 1);
+    verifyEqual(tc, E.rev_pct(i), R.persistence.rev_pct(k), "AbsTol", 1e-9);
+    verifyEqual(tc, E.vol_pct(i), R.persistence_volume.vol_pct(k), "AbsTol", 1e-9);
+end
+verifyTrue(tc, all(diff(E.vol_pct) <= 0), "exceedance is nonincreasing");
+P = R.persistence_volume;
+k40 = find(P.threshold_dBi == 40);
+verifyEqual(tc, P.censored_runs(k40), P.n_runs(k40), "every volume reaches 40 dBi: each run spans its trial");
+end
+
 function testInputErrors(tc)
 d = tc.TestData;
 w = d.fixed;

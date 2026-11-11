@@ -17,6 +17,12 @@ function rows = redteam_runs_rev1(ids, opts)
 %     .out_dir   evidence folder (default <repo_dir>/docs/figures/redteam)
 %     .quick     true: tiny runs that check the code paths only (default
 %                false; the tests use it). Quick rows are not evidence.
+%     .inputs    "rev5" (default: NSSL measured pattern and the 74 modes,
+%                so the register reproduces) | "rev6" (ROC specification
+%                pattern and all 216 modes: the revision 6 defaults, red-team
+%                finding P7). With "rev6" the default out_dir is
+%                <repo_dir>/docs/figures/redteam_rev6/attacks and "register"
+%                is not available.
 %
 %   Run (long; about an hour in total on a laptop, so in batch):
 %     j = batch(parcluster("Processes"), @redteam_runs_rev1, 1, ...
@@ -39,6 +45,9 @@ if ~isfolder(opts.out_dir)
 end
 all_ids = ["A1" "A2" "A3" "A4" "B1" "B2" "B4" "B5" "C1" "C2" "C3" "C4" "C5" "D2" "F1" "NOAA"];
 if isequal(ids, "register")
+    if opts.inputs == "rev6"
+        error("redteam:registerRev5", "The register holds the revision 5 runs; run ""register"" with inputs ""rev5"".");
+    end
     rows = make_register(opts);
     return
 end
@@ -66,14 +75,20 @@ end
 % =========================================================================
 function ctx = base_context(opts)
 % Systems, scan modes and gain tables shared by the attacks.
-% The step 8 evidence used the measured pattern (the default then); keep it
-% so the register reproduces. C1 and the NOAA case set the pattern.
+% The step 8 evidence used the measured pattern (the default then) and the
+% 74 modes; opts.inputs = "rev5" keeps them so the register reproduces, and
+% "rev6" uses the revision 6 defaults. C1 and the NOAA case set the pattern.
+if opts.inputs == "rev6"
+    [ctx.pattern, mode_set] = deal("roc_spec", "all");
+else
+    [ctx.pattern, mode_set] = deal("nssl_measured", "lowest");
+end
 ob = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, ...
-    "cdf_method", "exact", "nexrad_pattern", "nssl_measured"));
+    "cdf_method", "exact", "nexrad_pattern", ctx.pattern));
 ctx.sys_n = ob.sys_nexrad;
 ctx.sys_a = ob.sys_asr11;
-[ctx.scans, ctx.names] = nexrad_mode_scans_rev1("lowest");   % the 74 modes of the Rev 5 study
-c = vcp_mode_cases_rev1("lowest");      % the 74 modes of the Rev 5 study
+[ctx.scans, ctx.names] = nexrad_mode_scans_rev1(mode_set);
+c = vcp_mode_cases_rev1(mode_set);
 ctx.cases = c(2:end);
 ctx.k_worst = find(ctx.names == "VCP 212 SAILSx3 AVSET 6.4", 1);
 ctx.pct = [50 90 99 99.9 99.99 99.999];
@@ -91,7 +106,8 @@ end
 function o = mode_opts(ctx, k, extra)
 % nexrad_asr11_mag_rev1 options for scan mode k plus the fields of extra.
 o = rmfield(ctx.cases{k}, "label");
-o.nexrad_pattern = "nssl_measured";              % step 8 baseline (see base_context)
+o.nexrad_pattern = ctx.pattern;                  % see base_context
+o.cdf_method = "monte_carlo";                    % the step 8 method; attacks set "exact" where they use it
 f = fieldnames(extra);
 for i = 1:numel(f)
     o.(f{i}) = extra.(f{i});
@@ -400,7 +416,7 @@ vn = ["el_nexrad_deg", "supplemental_cut_deg", "base_" + pnames(pct), "delta_" +
 T = cell2table(rows_, 'VariableNames', vn);
 writetable(T, evid(opts, "A4"));
 dmax = max(T{:, startsWith(vn, "delta_")}, [], "all");
-key = sprintf("74 modes use a 0.5 deg lowest cut; public NWS lists sites with a supplemental cut at -0.2 to +0.4 deg (4 sites at -0.2). Adding one such cut to the worst mode raises the MAG by up to %.2f dB (99 to 99.999%%, takeoff -0.2 to 0.5 deg).", dmax);
+key = sprintf("The %d modes use a 0.5 deg lowest cut; public NWS lists sites with a supplemental cut at -0.2 to +0.4 deg (4 sites at -0.2). Adding one such cut to the worst mode raises the MAG by up to %.2f dB (99 to 99.999%%, takeoff -0.2 to 0.5 deg).", numel(ctx.names), dmax);
 r = row("A4", "The 74 modes are the complete set", ...
     "Compare with public NWS VCP material; add one supplemental low cut (-0.2 to 0.4 deg) to the worst mode", ...
     "Every operational VCP and lowest angle is in the table, or the gap is listed with its effect", ...
@@ -1093,7 +1109,7 @@ end
 % =========================================================================
 function opts = fill_opts(opts)
 here = string(fileparts(mfilename("fullpath")));
-d = struct("repo_dir", here, "out_dir", "", "quick", false);
+d = struct("repo_dir", here, "out_dir", "", "quick", false, "inputs", "rev5");
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i}) || (isempty(opts.(f{i})) && ~islogical(opts.(f{i})))
@@ -1105,7 +1121,13 @@ if ~isempty(extra)
     error("redteam:unknownOption", "Unknown option(s): %s.", strjoin(extra, ", "));
 end
 opts.repo_dir = string(opts.repo_dir);
-if opts.out_dir == ""
+opts.inputs = string(opts.inputs);
+if ~ismember(opts.inputs, ["rev5", "rev6"])
+    error("redteam:badInputs", "opts.inputs must be ""rev5"" or ""rev6"".");
+end
+if opts.out_dir == "" && opts.inputs == "rev6"
+    opts.out_dir = fullfile(opts.repo_dir, "docs", "figures", "redteam_rev6", "attacks");
+elseif opts.out_dir == ""
     opts.out_dir = fullfile(opts.repo_dir, "docs", "figures", "redteam");
 end
 opts.out_dir = string(opts.out_dir);

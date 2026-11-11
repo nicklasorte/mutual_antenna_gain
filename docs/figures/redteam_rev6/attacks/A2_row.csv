@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+A2,The ATC rate tolerance does not matter,"Fixed ATC rates across 74.5 to 75.5 deg/s (0.025 deg/s step), time series vs exact CDF, worst three modes",No rate where clock and exact CDFs differ by more than 1 dB at 99.9%,Pass,"41 rates x 3 modes x 2 trials of 3600 s. Largest |deviation| at 99.9%: 0.41 dB (VCP 212 SAILSx3 AVSET 6.4, 75.300 deg/s); 0 runs over 1 dB.",docs/figures/redteam_rev6/attacks/A2_rev1.csv,None,None,215.815337375,0

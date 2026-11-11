@@ -48,3 +48,15 @@ function testUnknownAttack(tc)
 verifyError(tc, @() redteam_runs_rev1("Z9", tc.TestData.opts), "redteam:unknownAttack");
 verifyError(tc, @() redteam_runs_rev1("C5", struct("bogus", 1)), "redteam:unknownOption");
 end
+
+function testRev6InputsQuickRun(tc)
+% The revision 6 inputs (ROC specification, 216 modes) run the attacks into
+% their own folder and refuse to touch the revision 5 register.
+d = fullfile(tc.TestData.repo, "rev6");
+o = struct("repo_dir", tc.TestData.repo, "out_dir", d, "quick", true, "inputs", "rev6");
+R = redteam_runs_rev1(["A3" "C4" "NOAA"], o);
+verifyEqual(tc, R.id', ["A3" "C4" "NOAA"]);
+verifyTrue(tc, isfile(fullfile(d, "A3_rev1.csv")));
+verifyError(tc, @() redteam_runs_rev1("register", o), "redteam:registerRev5");
+verifyError(tc, @() redteam_runs_rev1("A3", struct("inputs", "rev9", "quick", true)), "redteam:badInputs");
+end

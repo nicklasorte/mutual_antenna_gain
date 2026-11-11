@@ -22,16 +22,20 @@ x = unique([delta_n; (ceil(delta_n*100)/100:0.01:180)'; 180]);
 y = unique([delta_a; (ceil(delta_a*100)/100:0.01:180)'; 180]);
 x = [x; -x];
 y = [y; -y];
+% el_n and el_a may be vectors (one per pair): the gains are evaluated for
+% all of them at once (antenna_gain_rev1 with a row of takeoff angles).
+el_n = el_n(:)';
+el_a = el_a(:)';
 tu = unique(tilts_n(:));
-[gnt, gnr] = deal(-Inf);
+[gnt, gnr] = deal(-Inf(1, numel(el_n)));
 for i = 1:numel(tu)
     st = struct("mech_az", -x, "tilt", tu(i) + 0*x, "steer_az", 0*x, "steer_el", 0*x);
-    gnt = max(gnt, max(antenna_gain_rev1(pn.tx, 0, el_n, st)));
-    gnr = max(gnr, max(antenna_gain_rev1(pn.rx, 0, el_n, st)));
+    gnt = max(gnt, max(antenna_gain_rev1(pn.tx, 0, el_n, st), [], 1));
+    gnr = max(gnr, max(antenna_gain_rev1(pn.rx, 0, el_n, st), [], 1));
 end
 st = struct("mech_az", 180 - y, "tilt", tilt_a + 0*y, "steer_az", 0*y, "steer_el", 0*y);
-gat = max(antenna_gain_rev1(pa.tx, 180, el_a, st));
-gar = max(antenna_gain_rev1(pa.rx, 180, el_a, st));
-f21 = gat + gnr;
-f12 = gnt + gar;
+gat = max(antenna_gain_rev1(pa.tx, 180, el_a, st), [], 1);
+gar = max(antenna_gain_rev1(pa.rx, 180, el_a, st), [], 1);
+f21 = (gat + gnr)';
+f12 = (gnt + gar)';
 end

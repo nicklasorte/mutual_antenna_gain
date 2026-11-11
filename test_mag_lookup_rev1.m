@@ -313,3 +313,24 @@ for j = 1:numel(d.pct)
         sprintf("%.3f%% at %.2f/%.2f deg: %.3f above MC band [%.3f %.3f] + bias", d.pct(j), el_tx, el_rx, got(j), lo, hi));
 end
 end
+
+% =========================================================================
+function testBisectionGivesTheSameEnvelope(tc)
+% Bisection percentile search (red-team plan V6): same envelope
+% percentiles and worst modes as the full search, for every grid node and
+% 300 random pairs over all 216 modes with the ROC specification pattern.
+o = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+[scans, names] = nexrad_mode_scans_rev1("all");
+g = -1:0.05:3;
+Tn = gain_dist_table_rev1(o.sys_nexrad.tx, scans, struct("mode_names", names, "el_grid_deg", g));
+Ta = gain_dist_table_rev1(o.sys_asr11.tx, o.sys_asr11.scan, struct("el_grid_deg", g));
+rs = RandStream("mrg32k3a", "Seed", 17);
+ea = [g(:); -1 + 4*rand(rs, 300, 1)];
+en = [flipud(g(:)); -1 + 4*rand(rs, 300, 1)];
+pct = [50 90 99 99.9 99.99 99.999];
+P = mag_pair_cdf_rev1(Ta, Tn, ea, en, struct("pct", pct));
+F = mag_pair_cdf_rev1(Ta, Tn, ea, en, struct("pct", pct, "pct_search", "full"));
+verifyEqual(tc, P.pct{:, 3:end}, F.pct{:, 3:end});
+verifyEqual(tc, P.worst_mode, F.worst_mode);
+verifyError(tc, @() mag_pair_cdf_rev1(Ta, Tn, 0, 0, struct("pct_search", "fast")), "mag_pair:badSearch");
+end

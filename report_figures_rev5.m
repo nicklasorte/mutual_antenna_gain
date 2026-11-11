@@ -70,6 +70,7 @@ wopt = rmfield(c{i_w}, "label");
 wopt.seed = base.seed;
 wopt.n_samples = base.n_samples;
 wopt.nexrad_pattern = "nssl_measured";   % Rev 5 used the measured pattern
+wopt.cdf_method = "monte_carlo";        % and Monte Carlo sampling
 
 % ---- Worst mode, long time series: 120 trials of 1 h (5 days, about
 %      90,000 ASR-11 revolutions; a run of two to five days was asked for at
@@ -144,7 +145,7 @@ writetable(Tdrift, fullfile(out_dir, "alignment_dwell_rev5.csv"));
 % ---- ASR-9 (M.1464-2 Radar B): every VCP mode, envelope, and the paired
 %      comparison with the ASR-11 at the ASR-9's worst mode
 asr9_base = struct("seed", base.seed, "n_samples", base.n_samples, ...
-    "duration_s", base.duration_s, "n_trials", base.n_trials, "nexrad_pattern", "nssl_measured", ...
+    "duration_s", base.duration_s, "n_trials", base.n_trials, "nexrad_pattern", "nssl_measured", "cdf_method", "monte_carlo", ...
     "asr_remote_sl_dBi", 3.5);          % Rev 5 inputs
 example_asr9_rev1;                  % defines T9, env9, w9, w11, Tcmp9, cmp9_label
 writetable(T9, fullfile(out_dir, "asr9_vcp_sweep_rev5.csv"));

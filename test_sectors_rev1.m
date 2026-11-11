@@ -158,7 +158,7 @@ function testWrapperSectorReproducesRev5(tc)
 % (docs/figures/sensitivity_sweep_rev5.csv) with the new center option at
 % its default, bit for bit.
 o = struct("seed", 20261105, "vcp", 212, "sails", 3, "avset_top_deg", 6.4, ...
-    "n_samples", 5e6, "duration_s", 3600, "n_trials", 4, "nexrad_sector_deg", 10, "nexrad_pattern", "nssl_measured");
+    "n_samples", 5e6, "duration_s", 3600, "n_trials", 4, "nexrad_sector_deg", 10, "nexrad_pattern", "nssl_measured", "cdf_method", "monte_carlo");
 r = nexrad_asr11_mag_rev1(o);
 q = r.cdf.pct21;
 got = arrayfun(@(p) q.gain_dBi(abs(q.pct - p) < 1e-9), [99 99.9 99.99 99.999]);

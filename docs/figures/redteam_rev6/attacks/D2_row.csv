@@ -1,0 +1,2 @@
+id,claim,test,criterion,result,key_result,evidence,severity,next_step,runtime_s,quick
+D2,120 hours is enough,"Bootstrap over 120 one-hour trials (2,000 resamples) of revolution and volume reach shares and the longest run",Intervals stated; extend the run if the lock probability interval is wider than a factor of two,Pass,"120 h, worst mode, 0/0: volume share reaching 70 dBi 12.3% (95% 10.6 to 14.2%). Lock-probability interval wider than a factor of two at no threshold.",docs/figures/redteam_rev6/attacks/D2_rev1.csv,None,None,11.1285826666667,0

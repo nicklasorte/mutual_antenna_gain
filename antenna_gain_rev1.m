@@ -6,6 +6,10 @@ function g_dBi = antenna_gain_rev1(ant_p, az_to_deg, el_to_deg, st)
 %
 %   az_to_deg  azimuth of the other station, deg clockwise from north
 %   el_to_deg  elevation of the other station, deg above local horizontal
+%              el_to_deg can be a 1-by-P row (P takeoff angles, for
+%              batches of radar pairs); g_dBi is then N-by-P, column p for
+%              el_to_deg(p). Each column equals the call with that scalar.
+%              Not supported for "array_planar".
 %   st         struct of N-by-1 column vectors (one row per sample):
 %      .mech_az   azimuth of the reflector boresight or array face normal
 %      .tilt      mechanical beam elevation of a reflector (deg); ignored
@@ -58,6 +62,9 @@ switch ant_p.type
         g_dBi = ant_p.g_max_dBi + max(g, ant_p.floor_dB);
 
     case "array_planar"
+        if isrow(el_to_deg) && ~isscalar(el_to_deg)
+            error("radar_coupling:batchArray", "array_planar takes no row of takeoff angles (batches).");
+        end
         g_dBi = planar_array_dBi(ant_p, az_to_deg, el_to_deg, st);
 
     otherwise
@@ -163,7 +170,14 @@ function g = csc2_cut_dB(cut, th, tilt)
 % (25)-(27) and Table 7. th is the elevation angle (deg); tilt is the beam
 % pointing elevation (deg), scalar or per sample.
 bw = cut.bw_deg;
+if isrow(th) && ~isscalar(th) && iscolumn(tilt) && ~isscalar(tilt) && all(tilt == tilt(1))
+    % Batch of elevations (1-by-P) with a fixed tilt: the pattern depends
+    % on the elevation only, so evaluate one row and repeat it.
+    g = repmat(csc2_cut_dB(cut, th, tilt(1)), numel(tilt), 1);
+    return
+end
 th = th + zeros(size(tilt));
+tilt = tilt + zeros(size(th));
 if isnan(cut.start_deg)
     start = tilt + bw/2;
 else

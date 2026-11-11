@@ -249,6 +249,24 @@ o11 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60
 verifyEqual(tc, o11.sys_asr11.tx.floor_dB, 3.5 - 34, "AbsTol", 1e-12);
 end
 
+function testSidelobeMarginBracket(tc)
+% Red-team finding P4: a margin lowers the ROC specification envelope beyond
+% the main beam; the median MAG (both far levels) drops by the margin.
+o0 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1));
+o3 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, ...
+    "nexrad_sl_margin_dB", 3));
+p = antenna_prepare_rev1(o3.sys_nexrad.tx);
+verifyEqual(tc, p.off_interp([5 30]), [-32 -43], "AbsTol", 1e-9);
+verifyEqual(tc, p.off_interp(0), 0, "AbsTol", 1e-9);
+m0 = o0.cdf.pct21.gain_dBi(o0.cdf.pct21.pct == 50);
+m3 = o3.cdf.pct21.gain_dBi(o3.cdf.pct21.pct == 50);
+verifyEqual(tc, m0 - m3, 3, "AbsTol", 0.1);
+verifyEqual(tc, o0.opts.cdf_method, "exact", "red-team finding P6: exact CDF is the default");
+verifyError(tc, @() nexrad_asr11_mag_rev1(struct("seed", 1, "nexrad_sl_margin_dB", 3, ...
+    "nexrad_pattern", "nssl_measured")), "radar_coupling:marginNeedsRoc");
+verifyError(tc, @() nexrad_asr11_mag_rev1(struct("seed", 1, "nexrad_sl_margin_dB", -1)), "radar_coupling:badMargin");
+end
+
 function testAsr11PatternValues(tc)
 p = antenna_prepare_rev1(quick_run(struct()).sys_asr11.tx);
 z = zeros(4, 1);
@@ -790,8 +808,10 @@ end
 function out = quick_run(o)
 % Small run for tests; fields of o override. The hand values in these
 % tests were written for the measured WSR-88D pattern (the default before
-% decision 7), so quick runs keep it unless a test sets another.
-d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured");
+% decision 7) and the Monte Carlo CDF (the default before finding P6), so
+% quick runs keep both unless a test sets another.
+d = struct("seed", 5, "n_samples", 2e4, "duration_s", 60, "n_trials", 1, "nexrad_pattern", "nssl_measured", ...
+    "cdf_method", "monte_carlo");
 f = fieldnames(o);
 for i = 1:numel(f)
     d.(f{i}) = o.(f{i});

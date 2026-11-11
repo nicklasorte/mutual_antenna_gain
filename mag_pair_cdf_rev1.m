@@ -37,6 +37,15 @@ function R = mag_pair_cdf_rev1(T_tx, T_rx, el_tx_deg, el_rx_deg, opts)
 %                   (default false)
 %     .return_curve true also returns the envelope exceedance curve of
 %                   each pair (default false)
+%     .pct_search   "bisect" (default) finds each percentile by bisection
+%                   on the envelope exceedance, computing it at about 12
+%                   bins per percentile instead of every bin (red-team plan
+%                   V6; the envelope is a weighted sum of the tilt pairs'
+%                   tail sums, nonincreasing in gain). "full" computes
+%                   every bin for every mode pair (the step 7 code; used
+%                   automatically for per_mode and return_curve). Both give
+%                   the same percentiles and worst modes except at exact
+%                   ties within round-off (1e-13 in probability)
 %     .interp       "quantile" (default) interpolates between the two
 %                   neighboring grid elevations in quantile space (no false
 %                   double peaks); "upper" takes, at each probability
@@ -142,6 +151,7 @@ Wk = kron(sd_r.Wc, sd_t.Wc);                     % mode-pair weights on slice-co
 [nm_t, nm_r] = ndgrid(T_tx.mode_names(mt), T_rx.mode_names(mr));
 mode_pairs = nm_t(:) + " | " + nm_r(:);
 dg = T_tx.bin_dB;
+wk = struct("full", Wk, "bisect", opts.pct_search == "bisect" && ~opts.per_mode && ~opts.return_curve);
 
 % ---- Pairs
 n_pct = numel(opts.pct);
@@ -196,11 +206,11 @@ mem_c = cellfun(@(x) members(x), chunks, "UniformOutput", false);
 G = cell(numel(chunks), 1);
 if opts.parallel_flag
     parfor ic = 1:numel(chunks)
-        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, Wk, dg, o);
+        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, wk, dg, o);
     end
 else
     for ic = 1:numel(chunks)
-        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, Wk, dg, o);
+        G{ic} = run_chunk(sd_h, keys_c{ic}, mem_c{ic}, light, gl, heavy_r, L_light, wk, dg, o);
     end
 end
 for ic = 1:numel(G)
@@ -241,18 +251,18 @@ end
 end
 
 % =========================================================================
-function out = run_chunk(sd_h, keys, mem, light, gl, heavy_r, L_light, Wk, dg, opts)
+function out = run_chunk(sd_h, keys, mem, light, gl, heavy_r, L_light, wk, dg, opts)
 % Groups of one heavy-side table interval (or a single group).
 pr = [];
 out = cell(size(keys, 1), 1);
 for j = 1:size(keys, 1)
     [ph, k0h, gmh, pr] = slices_cell(sd_h, keys(j, :), opts.interp, pr);
-    out{j} = run_group(ph, k0h, gmh, mem{j}, light, gl, heavy_r, L_light, Wk, dg, opts);
+    out{j} = run_group(ph, k0h, gmh, mem{j}, light, gl, heavy_r, L_light, wk, dg, opts);
 end
 end
 
 % -------------------------------------------------------------------------
-function out = run_group(ph, k0h, gmh, ip, light, gl, heavy_r, L_light, Wk, dg, opts)
+function out = run_group(ph, k0h, gmh, ip, light, gl, heavy_r, L_light, wk, dg, opts)
 % Every pair of one group: the heavy side's slices (ph) and FFT once.
 Lh = size(ph, 1);
 nfft = 2^nextpow2(Lh + L_light - 1);
@@ -263,7 +273,7 @@ end
 sh = find(any(ph > 0, 2));                         % rows of the heavy side's support
 n = numel(ip);
 n_pct = numel(opts.pct);
-n_mp = size(Wk, 1);
+n_mp = size(wk.full, 1);
 out = struct("q_env", NaN(n, n_pct), "worst", zeros(n, n_pct), "q_mode", NaN(n, n_mp, n_pct), ...
     "max_path", NaN(n, 1), "curve", {cell(n, 1)});
 for i = 1:n
@@ -304,7 +314,7 @@ for i = 1:n
             end
         end
     end
-    [q_env, worst, q_mode, curve] = finish_pair(C, li.k0 + k0h, dg, Wk, opts);
+    [q_env, worst, q_mode, curve] = finish_pair(C, li.k0 + k0h, dg, wk, opts);
     out.q_env(i, :) = q_env;
     out.worst(i, :) = worst;
     out.q_mode(i, :, :) = q_mode;
@@ -314,9 +324,16 @@ end
 end
 
 % -------------------------------------------------------------------------
-function [q_env, worst, q_mode, curve] = finish_pair(C, k_off, dg, Wk, opts)
+function [q_env, worst, q_mode, curve] = finish_pair(C, k_off, dg, wk, opts)
 % Mode-pair distributions from the tilt-pair convolutions; percentiles,
 % worst mode and the envelope curve. Conv bin c holds (k_off + c - 1)*bin_dB.
+if wk.bisect
+    [q_env, worst, q_mode, curve, ok] = finish_bisect(C, k_off, dg, wk.full, opts);
+    if ok
+        return
+    end
+end
+Wk = wk.full;
 L = size(C, 1);
 PM = max(C*Wk', 0);                                   % bins by mode pairs; clip round-off
 E = cumsum(PM, 1, "reverse") - PM;                    % P(MAG > gain of bin), tail-accurate
@@ -341,6 +358,60 @@ if opts.return_curve
     keep = min(L, keep + 1);
     curve = table(gain(1:keep), 100*e_env(1:keep), 'VariableNames', ["gain_dBi", "exceed_pct"]);
 end
+end
+
+% -------------------------------------------------------------------------
+function [q_env, worst, q_mode, curve, ok] = finish_bisect(C, k_off, dg, Wk, opts)
+% finish_pair by bisection (opts.pct_search = "bisect"). Ec(r, :) is the
+% tail sum of each tilt-pair column above bin r, P(MAG > gain of bin r)
+% for that tilt pair; it is nonincreasing in r because the columns are
+% clipped at 0. A mode pair's exceedance at bin r is Ec(r, :)*w, and the
+% envelope is the largest over the mode pairs. Each percentile is the
+% first bin where the envelope is at or below 1 - p (tolerance 1e-13, as
+% finish_pair), found by bisection; the worst mode is the first mode pair
+% still above 1 - p one bin lower. ok is false if a check fails (round-off
+% at a tie); the caller then uses finish_pair's full search.
+% Considered: cumsum of every mode pair over every bin (finish_pair; 45%
+% of the pair time with 216 modes).
+L = size(C, 1);
+s = cumsum(max(C, 0), 1, "reverse");
+Ec = [s(2:end, :); zeros(1, size(C, 2))];
+gain = (k_off + (0:L - 1)')*dg;
+n_pct = numel(opts.pct);
+q_mode = NaN(1, size(Wk, 1), n_pct);
+[q_env, worst] = deal(zeros(1, n_pct));
+ok = true;
+env = @(r) max(Ec(r, :)*Wk', [], 2);
+for j = 1:n_pct
+    lim = 1 - opts.pct(j)/100 + 1e-13;
+    if env(1) <= lim
+        b = 1;
+    else
+        lo = 1;                                   % env(lo) > lim
+        hi = L;                                   % env(L) = 0 <= lim
+        while hi - lo > 1
+            mid = floor((lo + hi)/2);
+            if env(mid) <= lim
+                hi = mid;
+            else
+                lo = mid;
+            end
+        end
+        b = hi;
+    end
+    q_env(j) = gain(b);
+    if b == 1
+        worst(j) = 1;
+        continue
+    end
+    m = find(Ec(b - 1, :)*Wk' > lim, 1);
+    if isempty(m)
+        ok = false;
+        return
+    end
+    worst(j) = m;
+end
+curve = [];
 end
 
 % -------------------------------------------------------------------------
@@ -667,7 +738,8 @@ end
 function opts = fill_opts(opts)
 d = struct("pct", [50 90 99 99.9 99.99 99.999], "brg_tx_deg", 0, "brg_rx_deg", 0, "tx_modes", strings(1, 0), ...
     "rx_modes", strings(1, 0), "per_mode", false, "return_curve", false, ...
-    "interp", "quantile", "parallel_flag", 0, "conv_method", "fft", "el_round_deg", 0);
+    "interp", "quantile", "parallel_flag", 0, "conv_method", "fft", "el_round_deg", 0, ...
+    "pct_search", "bisect");
 f = fieldnames(d);
 for i = 1:numel(f)
     if ~isfield(opts, f{i})
@@ -684,6 +756,10 @@ if opts.interp == "nearest"
 end
 if ~ismember(opts.interp, ["quantile", "upper", "exact"])
     error("mag_pair:badInterp", "opts.interp must be ""quantile"", ""upper"" or ""exact"".");
+end
+opts.pct_search = string(opts.pct_search);
+if ~ismember(opts.pct_search, ["bisect", "full"])
+    error("mag_pair:badSearch", "opts.pct_search must be ""bisect"" or ""full"".");
 end
 opts.conv_method = string(opts.conv_method);
 if ~ismember(opts.conv_method, ["fft", "direct"])
