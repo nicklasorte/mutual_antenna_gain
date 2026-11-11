@@ -211,6 +211,27 @@ P = readtable(fullfile(d, "peaks_above_plateau_120h_rev5.csv"));
 verifyGreaterThan(tc, height(P), 0, "the labeled-peak code runs");
 end
 
+function testReportNumbersRev6(tc)
+% Small run of the Rev 6 tables: every file written, five cases, and the
+% Rev 6 defaults at a horizontal path (ROC specification far level 5.5 dBi
+% plus ASR-11 remote 3.5 dBi = 9 dBi at 50%; NSSL -9.5 + 3.5 = -6 dBi).
+d = fullfile(tempname, "r6");
+rev6_overrides = struct("out_dir", d, "n_trials", 1, "duration_s", 120); %#ok<NASGU>
+evalc("report_numbers_rev6");
+f = ["headline", "noaa_tilt", "timeseries", "harm", "lookup_pair", "ref_levels"] + "_rev6.csv";
+for k = f
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+H = readtable(fullfile(d, "headline_rev6.csv"), "TextType", "string", "VariableNamingRule", "preserve");
+verifyEqual(tc, unique(H.case)', sort(["roc_asr11" "roc_asr9" "nssl_asr11" "nssl_asr9" "noaa_asr11"]));
+verifyEqual(tc, H.env216_dBi(H.case == "roc_asr11" & H.pct == 50), 9, "AbsTol", 0.35);
+verifyEqual(tc, H.env216_dBi(H.case == "nssl_asr11" & H.pct == 50), -6, "AbsTol", 0.35);
+verifyTrue(tc, all(H.env216_dBi >= H.env74_dBi), "216 modes include the 74");
+M = readtable(fullfile(d, "harm_rev6.csv"), "TextType", "string", "VariableNamingRule", "preserve");
+verifyEqual(tc, unique(M.radial_deg)', [0.5 1]);
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;
