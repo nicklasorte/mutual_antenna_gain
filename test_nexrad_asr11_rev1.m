@@ -333,6 +333,24 @@ verifyEqual(tc, periodic_runs_rev1(mk(g3), 60), [3 1 3 3 1], ...
     "run of 3 at k = 1; at k = 4 the single hit at volume 4 is censored (4 <= 4), length 1");
 end
 
+function testPeriodicTieAndLockRate(tc)
+% Recheck V7: a tie between periods keeps the shortest period and is
+% censored when any tied run is. Recheck V2: the lock behind a periodic
+% run, over multiples of its period, worked by hand.
+mk = @(g) table(ones(numel(g), 1), true(numel(g), 1), g(:), 'VariableNames', ["trial" "complete" "max_g21_dBi"]);
+g = 50*ones(1, 20);
+g([5 6 7]) = 61;                                   % k = 1: volumes 5-7, duration 3, uncensored
+g([17 19]) = 61;                                   % k = 2: volumes 17 and 19, duration 3, censored (19 > 20 - 2)
+[s, tr] = periodic_runs_rev1(mk(g), 60);
+verifyEqual(tc, s(1:3), [3 1 3], "the tie keeps k = 1");
+verifyTrue(tc, tr.censored(1), "censored because the tied k = 2 run is");
+[d, k] = lock_drift_multiple_rev1([-159.997 -159.997 90.2 10], [3 1 2 0]);
+% -159.997 at period 3: 9 x = -1439.973, 0.027 deg from 4 revolutions;
+% at period 1 also k = 9; 90.2 at period 2: 4 x = 360.8, 0.8 deg; period 0: NaN
+verifyEqual(tc, k, [9 9 4 NaN]);
+verifyEqual(tc, d, [0.027 0.027 0.8 NaN], "AbsTol", 1e-9);
+end
+
 function testLockDriftAndRankHelpers(tc)
 % Recheck U10: hand-worked values, not the formulas of the code.
 [m, k] = lock_drift_m4_rev1([-119 91 3 179.5]);

@@ -67,8 +67,10 @@ for jj = 1:n_t
             all_cen = [all_cen; cen(:)]; %#ok<AGROW>
             [dm, im] = max(dur);
             cm = any(cen(dur == dm));
-            if dm > best(1) || (dm == best(1) && cm && k == best(2))
+            if dm > best(1)
                 best = [dm k nh(im) cm];
+            elseif dm == best(1) && dm > 0
+                best(4) = best(4) || cm;            % a tie keeps the shortest period, censored if any tied run is (recheck V7)
             end
         end
     end

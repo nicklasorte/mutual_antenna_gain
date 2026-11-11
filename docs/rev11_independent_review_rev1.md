@@ -105,4 +105,8 @@ V3 and V4 weren't rechecked by the author.
 | 4 | Describe the null correctly (each seed's pooled share), run it with 20,000 trials and state confidence intervals for the ratios, and say the null isn't calibrated at short durations | V4, V5 |
 | 5 | Note that the 8-hour random-walk periodic run is within chance; fix the tie rule or its help text and test it; finish the U2 and U9 leftovers (summary path, open item 3, timing spreads); test that `lock_null_rev11.csv` is written | V6 to V10 |
 
+## Status
+
+As of November 11, 2026, revision 12 (`docs/mutual_antenna_gain_methodology_report_rev12.md`) answers every finding; its Section 11.11 maps each to its fix. For step 2, a per-volume lock rate (drift divided by k) didn't separate long periodic runs from short ones, so revision 12 measures the drift over multiples of each run's own period up to 16 volumes (`lock_drift_multiple_rev1`), which does.
+
 **DRAFT//PRE-DECISIONAL**

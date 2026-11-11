@@ -325,6 +325,25 @@ verifyTrue(tc, all(L.ep3_vols <= L.ep5_vols & L.ep5_vols <= L.ep8_vols));
 rmdir(fileparts(d), "s");
 end
 
+function testReportNumbersRev12(tc)
+% Small run of the Rev 12 tables (independent recheck V2 to V6, V9): every
+% file is written, including the chance tables, and the intervals bracket
+% their estimates.
+d = fullfile(tempname, "r12");
+rev12_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
+    "n_null", 200, "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev12");
+f = ["seeds_runs", "lock_trials", "lock_k16", "lock_fit", "lock_walk_null"] + "_rev12.csv";
+for k = [f, "fig_lock_k16_rev12.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+F = readtable(fullfile(d, "lock_fit_rev12.csv"), "TextType", "string");
+verifyTrue(tc, all(F.periodic_lo_pct <= F.trials_periodic_ge_pct & F.trials_periodic_ge_pct <= F.periodic_hi_pct));
+verifyTrue(tc, all(F.null_lo_pct <= F.null_periodic_ge_pct & F.null_periodic_ge_pct <= F.null_hi_pct));
+verifyEqual(tc, unique(F.n_null_trials), 200);
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;
