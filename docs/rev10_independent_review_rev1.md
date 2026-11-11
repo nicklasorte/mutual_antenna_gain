@@ -99,7 +99,7 @@ U2 and U3 weren't rechecked by the author.
 | 1 | Add a lock statistic that doesn't need consecutive volumes: within a trial, the longest stretch in which a volume at the level recurs at least every k volumes (k = 1 to 4), with its censoring; report it beside runs and episodes; withdraw "a lock can hold the coupling low" | U1 |
 | 2 | Report the episode's sensitivity to the margin (3, 5, and 8 dB) and path angle; correct "dips fall much lower than 55 dBi"; give the headline as a range with the margin stated | U2 |
 | 3 | Report the longest episode from a separate trial (28 volumes, 2.75 h for VCP 212) instead of a second episode from the 105-volume trial | U3, T1 |
-| 4 | Fix the wording and small numbers: "explains most of the order", the warning's firing cases, the 42 core-hour figure, 3.0 h rounding, the timing machine file, the 8° cut, and the historical S1 row | U4 to U11 |
-| 5 | Replace self-referential tests with checks against independent hand calculations | U-test findings |
+| 4 | Fix the wording and small numbers: the 8° cut (U4), "explains most of the order" (U5), the warning's firing cases (U6), the 42 core-hour figure (U7), 3.0 h rounding (U8), the timing machine file (U9), and the historical S1 row (U11) | U4 to U9, U11 |
+| 5 | Replace self-referential tests with checks against independent hand calculations | U10 |
 
 **DRAFT//PRE-DECISIONAL**
