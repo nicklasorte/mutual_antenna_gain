@@ -1,0 +1,7 @@
+el_deg,statistic,min_over_modes,median_over_modes,max_over_modes,n_modes_at_min,n_modes
+0,p95_run_60_vols,1,2,3,3,216
+0,share_runs_ge2_60_pct,7.37704918032787,28.9611491428237,55.0200803212851,1,216
+0,max_run_60_vols,2,4,15,8,216
+0.5,p95_run_60_vols,2,2,4,111,216
+0.5,share_runs_ge2_60_pct,12.093023255814,41.0759443654181,63.6363636363636,1,216
+0.5,max_run_60_vols,3,5,15,11,216

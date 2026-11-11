@@ -281,7 +281,17 @@ x = (0:0.01:180)';
 [~, el_n] = nexrad_cuts(sys_n.scan);
 tu = unique(el_n(:));
 g0 = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(zeros(size(tu)), tu));   % beam azimuth on the path
-[~, ib] = max(g0);                                % first (lowest) cut on a tie
+[g0m, ib] = max(g0);                              % first (lowest) cut on a tie
+g_pk_n = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(0, opts.el_nexrad_deg));   % beam on axis
+mb_on_path = g0m > g_pk_n - 20;                    % some cut's main beam, not a sidelobe, reaches the path (sidelobes are -29 dB or lower)
+if ~mb_on_path
+    % Independent recheck finding S9: above the top cut (or far below the
+    % lowest) no cut puts its main beam on the path, so the "main beam"
+    % rows below are the best gain any cut gives on the path, not a main beam.
+    warning("radar_coupling:noMainBeamOnPath", ...
+        "No NEXRAD cut has its main beam on the path (best on-path gain %.1f dBi, %.1f dB below peak); " + ...
+        "the reference levels labeled main beam use that best gain.", g0m, g_pk_n - g0m);
+end
 gn = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(-x, tu(ib) + 0*x));
 ga = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - x, sys_a.scan.tilt_deg + 0*x));
 % [main, near SL, back]; 2 beamwidths = 4 x the 3 dB half-width of the cut
@@ -304,6 +314,8 @@ Rv = S.asr_rev(S.asr_rev.complete, :);
 rev_pct = arrayfun(@(v) 100*mean(Rv.max_g21_dBi >= v - 0.2), g);
 R = table(name, g, g_n, g_a, exceed, rev_pct, 'VariableNames', ["combination", ...
     "mag_dBi", "nexrad_gain_dBi", "asr11_gain_dBi", "time_exceeded_pct", "asr_rev_reached_pct"]);
+R.Properties.Description = sprintf("NEXRAD cut %.2f deg; main beam on the path: %d; " + ...
+    "NEXRAD sector scans are not modeled here (full rotation assumed)", tu(ib), mb_on_path);
 end
 
 % -------------------------------------------------------------------------
@@ -875,9 +887,11 @@ for i = 1:n_el
 end
 % Keep only levels above ASR-11 main beam + NEXRAD back lobe, which every
 % revolution reaches; at or below it the hand count does not apply.
-z1 = struct("mech_az", 180, "tilt", el_n(1), "steer_az", 0, "steer_el", 0);
+% Lowest NEXRAD back-lobe gain over every cut tilt (before revision 9 the
+% first cut only; independent recheck finding S9).
+z1 = struct("mech_az", 180 + 0*el, "tilt", el, "steer_az", 0*el, "steer_el", 0*el);
 g_base = antenna_gain_rev1(pa, 180, opts.el_atc_deg, struct("mech_az", 180, "tilt", 0, ...
-    "steer_az", 0, "steer_el", 0)) + antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, z1);
+    "steer_az", 0, "steer_el", 0)) + min(antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, z1));
 keep = lev > g_base + 1e-9;
 [el, n_cut, g_n, lev, pred, sim] = deal(el(keep), n_cut(keep), g_n(keep), lev(keep), pred(keep), sim(keep));
 n_el = numel(el);

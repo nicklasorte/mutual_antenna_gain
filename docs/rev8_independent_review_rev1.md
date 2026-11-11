@@ -99,4 +99,8 @@ S2 wasn't rechecked by the author.
 | 4 | Correct the location ranges, the 55 to 70 dBi claim, the Figure 13 alt text, the random-walk step description and the 3.3 dB wording | S5 to S8 |
 | 5 | Label reference levels above a mode's top cut; time the all-mode estimate over several modes; give Table 13-1 an evidence file or mark it historical | S9, S10, Q7 |
 
+## Status
+
+As of November 11, 2026, revision 9 (`docs/mutual_antenna_gain_methodology_report_rev9.md`) answers every finding; its Section 11.8 maps each to its fix. Steps 1 to 5 are done. Step 2's longer fixed-offset runs weren't added: revision 9 instead states that a near-exact lock has no upper bound in the fixed-offset model and counts how often a rate draw gives a long run.
+
 **DRAFT//PRE-DECISIONAL**

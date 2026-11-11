@@ -262,6 +262,20 @@ verifyEqual(tc, o1.ref_levels.mag_dBi, o0.ref_levels.mag_dBi, "AbsTol", 1e-9);
 verifyEqual(tc, o1.ref_levels.mag_dBi(1), 79.5, "AbsTol", 0.15, "both beams on the path");
 end
 
+function testRefLevelsFlagNoMainBeamOnPath(tc)
+% Independent recheck S9: above the top cut no cut puts its main beam on
+% the path, so the "main beam" reference levels are sidelobe gains; the
+% wrapper warns and records it. A horizontal path still has a main beam
+% (0.5 deg cut, 3.5 dB down).
+b = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "vcp", 212, ...
+    "sails", 3, "avset_top_deg", 6.4, "el_path_deg", 0);
+o0 = nexrad_asr11_mag_rev1(b);
+verifySubstring(tc, o0.ref_levels.Properties.Description, "main beam on the path: 1");
+b.el_path_deg = 10;
+o1 = verifyWarning(tc, @() nexrad_asr11_mag_rev1(b), "radar_coupling:noMainBeamOnPath");
+verifySubstring(tc, o1.ref_levels.Properties.Description, "main beam on the path: 0");
+end
+
 function testSidelobeMarginBracket(tc)
 % Red-team finding P4: a margin lowers the ROC specification envelope beyond
 % the main beam; the median MAG (both far levels) drops by the margin.

@@ -258,6 +258,31 @@ verifyTrue(tc, all(W.n_modes_tied >= 1));
 rmdir(fileparts(d), "s");
 end
 
+function testReportNumbersRev9(tc)
+% Small run of the Rev 9 tables and figures (independent recheck S1, S2,
+% S3, S10): every file is written, per-hour volumes equal the share times
+% volumes per hour, and a run touching a trial end is flagged censored.
+d = fullfile(tempname, "r9");
+rev9_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
+    "n_modes_time", 1, "time_hours", 1, "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev9");
+f = ["per_hour_modes", "per_hour_envelope", "run_modes", "seeds_runs", "seeds_summary", "lock_trials", ...
+    "lock_fit", "timing_modes"] + "_rev9.csv";
+for k = [f, "timing_rev9_machine.txt", "fig13_runs_vs_drift_rev9.png", "fig_lock_vs_slip_rev9.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+P = readtable(fullfile(d, "per_hour_modes_rev9.csv"), "TextType", "string");
+verifyEqual(tc, height(P), 432, "216 modes at two paths");
+verifyEqual(tc, P.vols_per_h_60, P.vol_pct_60/100*3600./P.t_volume_s, "RelTol", 1e-12);
+k = P.mode == "VCP 212 SAILSx3 AVSET 6.4";
+verifyEqual(tc, P.cuts05_per_volume(k), [8; 8]);
+S = readtable(fullfile(d, "seeds_runs_rev9.csv"), "TextType", "string");
+verifyTrue(tc, all(max(S.max_uncensored_run_vols, S.max_censored_run_vols) == S.max_run_vols));
+L = readtable(fullfile(d, "lock_trials_rev9.csv"), "TextType", "string");
+verifyTrue(tc, all(abs(L.slip_deg_per_vol) <= 180));
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;
