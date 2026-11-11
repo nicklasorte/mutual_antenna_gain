@@ -314,6 +314,35 @@ s4 = run_stats_rev1(V3, 60, 5);
 verifyEqual(tc, s4([4 8]), [2 1], "the run 8-9 now ends at the last complete volume");
 end
 
+function testPeriodicRunsLockOverK(tc)
+% Recheck U1: a lock over k volumes repeats high coupling every k volumes;
+% periodic runs find it where runs and episodes see length 1. Hand-made
+% sequences, values worked out by hand.
+mk = @(g) table(ones(numel(g), 1), true(numel(g), 1), g(:), 'VariableNames', ["trial" "complete" "max_g21_dBi"]);
+g = 50*ones(1, 15); g([5 8 11]) = 61;              % every third volume, away from both ends
+[s, tr] = periodic_runs_rev1(mk(g), 60);
+verifyEqual(tc, s, [7 3 3 7 0], "3 hits spanning volumes 5 to 11 at k = 3, uncensored");
+verifyFalse(tc, tr.censored(1));
+r = run_stats_rev1(mk(g), 60, 5);
+verifyEqual(tc, [r(4) r(10)], [1 1], "runs and episodes see length 1");
+g2 = 50*ones(1, 12); g2([3 5 7 9 11]) = 62;        % every second volume, reaching volume 11 of 12
+s2 = periodic_runs_rev1(mk(g2), 60);
+verifyEqual(tc, s2([1 2 3 5]), [9 2 5 9], "9 volumes at k = 2, censored at the end (11 > 12 - 2)");
+g3 = 50*ones(1, 10); g3([4 5 6]) = 61;             % a plain run is k = 1
+verifyEqual(tc, periodic_runs_rev1(mk(g3), 60), [3 1 3 3 1], ...
+    "run of 3 at k = 1; at k = 4 the single hit at volume 4 is censored (4 <= 4), length 1");
+end
+
+function testLockDriftAndRankHelpers(tc)
+% Recheck U10: hand-worked values, not the formulas of the code.
+[m, k] = lock_drift_m4_rev1([-119 91 3 179.5]);
+% -119: 3 x -119 = -357, 3 deg from -360; 91: 4 x 91 = 364; 179.5: 2 x 179.5 = 359
+verifyEqual(tc, m, [3 4 3 1], "AbsTol", 1e-9);
+verifyEqual(tc, k, [3 4 1 2]);
+verifyEqual(tc, competition_rank_rev1([5 9 9 1]), [3 1 1 4]);
+verifyEqual(tc, competition_rank_rev1([2; 2; 2]), [1; 1; 1]);
+end
+
 function testSidelobeMarginBracket(tc)
 % Red-team finding P4: a margin lowers the ROC specification envelope beyond
 % the main beam; the median MAG (both far levels) drops by the margin.

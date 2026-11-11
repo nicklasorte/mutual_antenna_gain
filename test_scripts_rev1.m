@@ -307,6 +307,24 @@ verifyTrue(tc, all(L.ep_span_vols >= L.longest_run_vols));
 rmdir(fileparts(d), "s");
 end
 
+function testReportNumbersRev11(tc)
+% Small run of the Rev 11 tables (independent recheck U1 to U3): every file
+% is written, the periodic run is at least the run (k = 1 is a run), and
+% the episodes grow with the margin.
+d = fullfile(tempname, "r11");
+rev11_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
+    "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev11");
+f = ["seeds_runs", "lock_trials", "lock_fit", "lock_top_trials", "lock_m4"] + "_rev11.csv";
+for k = [f, "fig_lock_periodic_rev11.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+L = readtable(fullfile(d, "lock_trials_rev11.csv"), "TextType", "string");
+verifyTrue(tc, all(L.per_vols >= L.longest_run_vols));
+verifyTrue(tc, all(L.ep3_vols <= L.ep5_vols & L.ep5_vols <= L.ep8_vols));
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;

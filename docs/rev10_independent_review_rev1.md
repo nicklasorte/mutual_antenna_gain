@@ -102,4 +102,8 @@ U2 and U3 weren't rechecked by the author.
 | 4 | Fix the wording and small numbers: the 8° cut (U4), "explains most of the order" (U5), the warning's firing cases (U6), the 42 core-hour figure (U7), 3.0 h rounding (U8), the timing machine file (U9), and the historical S1 row (U11) | U4 to U9, U11 |
 | 5 | Replace self-referential tests with checks against independent hand calculations | U10 |
 
+## Status
+
+As of November 11, 2026, revision 11 (`docs/mutual_antenna_gain_methodology_report_rev11.md`) answers every finding; its Section 11.10 maps each to its fix. Step 1's periodic runs use an exact period k (volumes v, v + k, v + 2k, ...), not "at least every k volumes", because a looser rule joins chance recurrences when 30% to 50% of volumes are high; a comparison with independent volumes shows which periodic runs exceed chance.
+
 **DRAFT//PRE-DECISIONAL**
