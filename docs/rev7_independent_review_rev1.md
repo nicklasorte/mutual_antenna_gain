@@ -86,6 +86,10 @@ None of these findings change a CDF percentile in Sections 8 or 11. They do chan
 | 5 | Correct the text: NOAA case "0.8 to 3 dB" and the worst angle over the surface (Q4, Q5); ASR-9 mechanism and its dependence on the +5.5 dBi remote level (Q8); worst-mode claim limited to 99.9% and 99.999% with ties noted (Q9); "up to 79.5 dBi" (Q10); location ranges and grid step in Table 8-1 (Q11); speed assumptions (Q12); time-step note on the 50.5 dBi step (Q13); document or assert the row-angle convention in `antenna_gain_rev1` (Q14) | Q4, Q5, Q8 to Q14 |
 | 6 | Issue revision 8, rerun the test suite, and have a reviewer who didn't write it check Sections 8 and 9 again | All |
 
+## Status
+
+As of November 11, 2026, steps 1 to 5 are done in revision 8 (`docs/mutual_antenna_gain_methodology_report_rev8.md`, Section 11.7 maps each finding to its fix), and the test suite has been rerun. The independent recheck of Sections 8 and 9 in step 6 is still open.
+
 The reviewer couldn't confirm that the pinned revision 6 references were written before any revision 7 change, because they were added in the same commit. The author's record shows `make_rev6_reference_rev1` ran and `test_regression_rev6` passed before the first code change of revision 7. Rerunning `test_regression_rev6` at commit `a33e806` with the reference files from `c1ef958` would show it independently.
 
 **DRAFT//PRE-DECISIONAL**

@@ -232,6 +232,32 @@ verifyEqual(tc, unique(M.radial_deg)', [0.5 1]);
 rmdir(fileparts(d), "s");
 end
 
+function testReportNumbersRev8(tc)
+% Small run of the Rev 8 tables and figures: every cited file is written
+% by the script (finding Q7), the time-series envelope is at or above the
+% CDF-worst mode (Q1), the reference levels see the cut on the path (Q6),
+% and the NOAA 50% value is the far level 5.5 dBi plus the +6.5 dBi
+% remote sidelobe.
+d = fullfile(tempname, "r8");
+rev8_overrides = struct("out_dir", d, "n_trials", 1, "duration_s", 900, "n_seeds", 1, ...
+    "drift_trials", 1, "drift_hours", 0.25, "grid_step", 0.5, "n_modes", 3, "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev8");
+f = ["takeoff_worst", "worst_modes", "ts_all_modes", "ts_envelope", "vol_exceed_modes", "seeds_runs", ...
+    "seeds_summary", "noaa_case", "worked_example", "ref_levels", "bootstrap", "trial_length", "timing"] + "_rev8.csv";
+for k = [f, "timing_rev8_machine.txt", "fig12_volume_exceedance.png", "fig13_runs_vs_drift.png", "fig14_harm.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+E = readtable(fullfile(d, "ts_envelope_rev8.csv"), "TextType", "string");
+verifyTrue(tc, all(E.max_over_modes >= E.at_cdf_worst_mode), "envelope below the CDF-worst mode");
+R = readtable(fullfile(d, "ref_levels_rev8.csv"), "TextType", "string");
+verifyEqual(tc, R.mag_dBi(1), 79.5, "AbsTol", 1e-6);
+N = readtable(fullfile(d, "noaa_case_rev8.csv"), "TextType", "string", "VariableNamingRule", "preserve");
+verifyEqual(tc, N.p50(N.case == "noaa" & N.row == "at_0_0"), 12, "AbsTol", 0.35);
+W = readtable(fullfile(d, "worst_modes_rev8.csv"), "TextType", "string", "VariableNamingRule", "preserve");
+verifyTrue(tc, all(W.n_modes_tied >= 1));
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;

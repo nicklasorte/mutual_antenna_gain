@@ -1,0 +1,7 @@
+item,seconds
+"WSR-88D table, 216 modes, 301 takeoff angles",1.73032416666667
+"Pair CDF, bisection (per pair, 500 pairs)",0.00127044709404167
+"Pair CDF, full search (per pair, 500 pairs)",0.00313636838570833
+"Time series, one pair",2.2809652136875
+"Time series, per pair in a batch of 32",0.698795451990234
+"Event library, one pair of modes",1.90508656785417

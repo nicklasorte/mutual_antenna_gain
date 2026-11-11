@@ -9,7 +9,9 @@ function g_dBi = antenna_gain_rev1(ant_p, az_to_deg, el_to_deg, st)
 %              el_to_deg can be a 1-by-P row (P takeoff angles, for
 %              batches of radar pairs); g_dBi is then N-by-P, column p for
 %              el_to_deg(p). Each column equals the call with that scalar.
-%              Not supported for "array_planar".
+%              Not supported for "array_planar". A per-sample elevation
+%              (one per state) must be an N-by-1 column: a 1-by-N row is
+%              read as a batch and returns N-by-N (independent review Q14).
 %   st         struct of N-by-1 column vectors (one row per sample):
 %      .mech_az   azimuth of the reflector boresight or array face normal
 %      .tilt      mechanical beam elevation of a reflector (deg); ignored

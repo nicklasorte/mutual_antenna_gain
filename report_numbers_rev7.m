@@ -19,7 +19,8 @@
 %     drift_runs_rev7.csv       run length of volumes at 55, 60 and 70 dBi
 %                               against the ATC rate-drift model, 10 trials
 %                               of 24 h each (finding P2)
-%     fig10_takeoff_curve.png ... fig14_harm.png
+%     fig10_takeoff_curve.png, fig11_pattern_bracket.png, and the revision 7
+%     versions of Figures 12 to 14 (fig12_volume_exceedance_rev7.png ...)
 %   Cases: roc (ROC specification, ASR-11), roc_m3 and roc_m6 (the
 %   specification lowered by 3 and 6 dB beyond the main beam), nssl (NSSL
 %   measured), roc_asr9 (ASR-9, +5.5 dBi remote sidelobe).
@@ -245,7 +246,7 @@ style(ax, c, "Largest MAG in the volume (dBi)", "Volumes reaching it (%)", "");
 put_label(ax, 50.7, 90, "ASR-11, specification", c.blue, true);
 put_label(ax, 49.8, 60, "ASR-9", c.purple, true, "right");
 put_label(ax, 45.3, 60, "Specification - 6 dB, NSSL", c.gray, false, "right");
-save_fig(f, out_dir, "fig12_volume_exceedance");
+save_fig(f, out_dir, "fig12_volume_exceedance_rev7");  % revision 8 draws fig12_volume_exceedance.png
 
 % Figure 13: run lengths at 60 dBi (path at 0.5 deg) for each drift model:
 % median, 95th percentile and longest run.
@@ -266,7 +267,7 @@ style(ax, c, "ATC rate drift model (random-walk step in deg/s per revolution)", 
 put_label(ax, 1.15, Dd.max_run_vols(1), "Longest", c.blue, true);
 put_label(ax, 1.15, Dd.p95_run_vols(1), "95th percentile", c.gray, false);
 put_label(ax, 1.15, Dd.median_run_vols(1) + 0.3, "Median", c.gray, false);
-save_fig(f, out_dir, "fig13_runs_vs_drift");
+save_fig(f, out_dir, "fig13_runs_vs_drift_rev7");  % revision 8 draws fig13_runs_vs_drift.png
 
 % Figure 14: share of 0.5 deg cuts with a radial at or above each level.
 f = new_fig(6.5, 2.6);
@@ -284,7 +285,7 @@ ax.YScale = "log";
 style(ax, c, "MAG level (dBi)", "0.5° cuts with a radial at the level (%)", "");
 put_label(ax, 51, 30, "ROC specification, ASR-11", c.blue, true);
 put_label(ax, 50.5, 1.5, ["Specification - 3 dB and - 6 dB,", "NSSL measured, and ASR-9"], c.gray, false);
-save_fig(f, out_dir, "fig14_harm");
+save_fig(f, out_dir, "fig14_harm_rev7");  % revision 8 draws fig14_harm.png
 
 % =========================================================================
 function len = run_lengths(V, thr)

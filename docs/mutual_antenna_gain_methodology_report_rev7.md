@@ -256,7 +256,7 @@ Each trial draws one ATC rotation-rate offset, uniform within ±0.5 degrees per 
 
 The share of volumes whose maximum reaches a level is robust: it agrees within 3 percentage points between 120 one-hour trials, ten 12-hour trials, and ten 24-hour trials, and across the drift models. Figure 12 gives it as a curve, so a reader can take any level (red-team finding P3).
 
-![Share of WSR-88D volumes whose largest MAG reaches each level from 40 to 80 dBi. Every curve is at 100% up to its sidelobe step: 50.5 dBi for the ASR-11 with the specification pattern, 50 dBi for the ASR-9, 47.5 and 45.5 dBi for the lowered patterns. Above the steps all curves fall together, through about 24% at 60 dBi and 14% at 70 dBi, to 0 near 76 dBi.](figures/fig12_volume_exceedance.png)
+![Share of WSR-88D volumes whose largest MAG reaches each level from 40 to 80 dBi. Every curve is at 100% up to its sidelobe step: 50.5 dBi for the ASR-11 with the specification pattern, 50 dBi for the ASR-9, 47.5 and 45.5 dBi for the lowered patterns. Above the steps all curves fall together, through about 24% at 60 dBi and 14% at 70 dBi, to 0 near 76 dBi.](figures/fig12_volume_exceedance_rev7.png)
 
 *Figure 12. Above 51 dBi, the share of volumes reaching each level doesn't depend on the WSR-88D pattern or the ATC radar; below it, the step depends on the flat sidelobe level. Horizontal path, worst mode, 120 h. Source: `docs/figures/vol_exceedance_rev7.csv` (2026).*
 
@@ -282,7 +282,7 @@ Run length isn't a stable statistic, so revision 7 reports its distribution and 
 
 Revision 7 ran ten 24-hour trials for each drift model: one fixed offset per trial, and a random walk of the rate with a step of 0.005, 0.01, 0.02, or 0.05 degrees per second per revolution, within the same ±0.5 degrees per second band (`docs/figures/drift_runs_rev7.csv`).
 
-![Run lengths at 60 dBi for five drift models. The median run is one volume for every model, the 95th percentile three to four volumes, and the longest run eight volumes for the fixed offset and the slowest walk and six volumes for the faster walks.](figures/fig13_runs_vs_drift.png)
+![Run lengths at 60 dBi for five drift models. The median run is one volume for every model, the 95th percentile three to four volumes, and the longest run eight volumes for the fixed offset and the slowest walk and six volumes for the faster walks.](figures/fig13_runs_vs_drift_rev7.png)
 
 *Figure 13. Most runs of high coupling last one volume; the longest runs shorten as the ATC rate drifts faster. Runs of consecutive WSR-88D volumes at 60 dBi or more, path at 0.5°, worst mode, ten 24-hour trials per model. Source: `docs/figures/drift_runs_rev7.csv` (2026).*
 
@@ -299,7 +299,7 @@ The ten 24-hour trials with a fixed offset gave a longest run of 8 volumes; the 
 
 A share of time doesn't say how much of a WSR-88D product is affected. The harm metric counts, for each complete 0.5° cut, the radials during which the MAG reaches a level while the WSR-88D beam points in that radial (path ATC radar to WSR-88D). It counts radials exposed to high coupling, not corrupted data: whether a radial is corrupted depends on the path loss, the receiver, and the protection criterion, which belong in the link budget working paper. A brute-force count on the full 2 ms grid checks the code.
 
-![Share of 0.5 degree cuts with a radial at or above each level, on a log scale: 100% at 40 dBi for every case; at 50 dBi 27% for the specification pattern and 3.5% for the others; at 60 dBi about 3% and at 70 dBi about 2% for all.](figures/fig14_harm.png)
+![Share of 0.5 degree cuts with a radial at or above each level, on a log scale: 100% at 40 dBi for every case; at 50 dBi 27% for the specification pattern and 3.5% for the others; at 60 dBi about 3% and at 70 dBi about 2% for all.](figures/fig14_harm_rev7.png)
 
 *Figure 14. At 60 dBi and above, about one 0.5° cut in 35 has a radial exposed to high coupling, whatever the WSR-88D pattern or ATC radar. Horizontal path, worst mode, 120 h. Source: `docs/figures/bracket_harm_rev7.csv` (2026).*
 

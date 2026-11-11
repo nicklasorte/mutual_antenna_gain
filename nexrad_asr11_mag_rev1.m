@@ -267,7 +267,10 @@ end
 function R = ref_levels(sys_n, sys_a, opts, cdf, S)
 % Main-beam and sidelobe combinations along the link path. Each antenna's
 % azimuth cut toward the other station is evaluated at its own tilt (the
-% NEXRAD at its lowest cut, where its main beam is closest to the path):
+% NEXRAD at the cut whose main beam comes closest to the path: the largest
+% on-path gain over every cut tilt. Before revision 8 the lowest cut was
+% used, which understated the levels when a supplemental low cut was added
+% or the path was nearer a higher cut; independent review finding Q6):
 %   main beam    gain with the beam azimuth on the path
 %   near sidelobe  largest gain with the beam azimuth >= 2 beamwidths
 %                  off the path (first-sidelobe region)
@@ -276,7 +279,10 @@ pn = antenna_prepare_rev1(sys_n.tx);
 pa = antenna_prepare_rev1(sys_a.tx);
 x = (0:0.01:180)';
 [~, el_n] = nexrad_cuts(sys_n.scan);
-gn = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(-x, min(el_n) + 0*x));
+tu = unique(el_n(:));
+g0 = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(zeros(size(tu)), tu));   % beam azimuth on the path
+[~, ib] = max(g0);                                % first (lowest) cut on a tie
+gn = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(-x, tu(ib) + 0*x));
 ga = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - x, sys_a.scan.tilt_deg + 0*x));
 % [main, near SL, back]; 2 beamwidths = 4 x the 3 dB half-width of the cut
 lev = @(g) [g(1), max(g(x >= 4*x(find(g <= g(1) - 3, 1)))), g(end)];

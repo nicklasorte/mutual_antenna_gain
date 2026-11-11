@@ -249,6 +249,19 @@ o11 = nexrad_asr11_mag_rev1(struct("seed", 1, "n_samples", 1e3, "duration_s", 60
 verifyEqual(tc, o11.sys_asr11.tx.floor_dB, 3.5 - 34, "AbsTol", 1e-12);
 end
 
+function testRefLevelsUseCutNearestThePath(tc)
+% Independent review Q6: with a supplemental low cut added, the on-path
+% reference levels come from the cut whose beam is nearest the path (0.5
+% deg here), not from the lowest cut.
+b = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "vcp", 212, ...
+    "sails", 3, "avset_top_deg", 6.4, "el_path_deg", 0.5);
+o0 = nexrad_asr11_mag_rev1(b);
+b.low_el_deg = -0.2;
+o1 = nexrad_asr11_mag_rev1(b);
+verifyEqual(tc, o1.ref_levels.mag_dBi, o0.ref_levels.mag_dBi, "AbsTol", 1e-9);
+verifyEqual(tc, o1.ref_levels.mag_dBi(1), 79.5, "AbsTol", 0.15, "both beams on the path");
+end
+
 function testSidelobeMarginBracket(tc)
 % Red-team finding P4: a margin lowers the ROC specification envelope beyond
 % the main beam; the median MAG (both far levels) drops by the margin.

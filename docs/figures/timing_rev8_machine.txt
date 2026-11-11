@@ -1,0 +1,1 @@
+MACA64; 25.2.0.3150157 (R2025b) Update 4; computational threads 1; 11-Nov-2026 14:13:41; parallel pool for sweeps: 1; 120 h per time series
