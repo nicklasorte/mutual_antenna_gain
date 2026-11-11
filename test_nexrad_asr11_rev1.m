@@ -267,6 +267,8 @@ function testRefLevelsFlagNoMainBeamOnPath(tc)
 % the path, so the "main beam" reference levels are sidelobe gains; the
 % wrapper warns and records it. A horizontal path still has a main beam
 % (0.5 deg cut, 3.5 dB down).
+ws = warning("on", "radar_coupling:noMainBeamOnPath");   % another file may have turned it off
+cl = onCleanup(@() warning(ws));
 b = struct("seed", 1, "n_samples", 1e3, "duration_s", 60, "n_trials", 1, "vcp", 212, ...
     "sails", 3, "avset_top_deg", 6.4, "el_path_deg", 0);
 o0 = nexrad_asr11_mag_rev1(b);
@@ -274,6 +276,42 @@ verifySubstring(tc, o0.ref_levels.Properties.Description, "main beam on the path
 b.el_path_deg = 10;
 o1 = verifyWarning(tc, @() nexrad_asr11_mag_rev1(b), "radar_coupling:noMainBeamOnPath");
 verifySubstring(tc, o1.ref_levels.Properties.Description, "main beam on the path: 0");
+% Recheck T9: 1.1 deg above the 6.4 deg top cut (17 dB down) is flagged,
+% and the table names the 6.4 deg cut; 1.5 deg below the lowest cut too.
+b.el_path_deg = 7.5;
+o2 = verifyWarning(tc, @() nexrad_asr11_mag_rev1(b), "radar_coupling:noMainBeamOnPath");
+verifySubstring(tc, o2.ref_levels.Properties.Description, "NEXRAD cut 6.40 deg");
+b.el_path_deg = -1;
+verifyWarning(tc, @() nexrad_asr11_mag_rev1(b), "radar_coupling:noMainBeamOnPath");
+end
+
+function testRunStatsCensoringAndEpisodes(tc)
+% Recheck T10 and T14: censoring, ties and lock episodes on hand-made
+% volume sequences, independent of report_numbers_rev10.
+mk = @(tr, g) table(tr(:), true(numel(g), 1), g(:), 'VariableNames', ["trial" "complete" "max_g21_dBi"]);
+% Trial 1: runs of 2 (volumes 2-3) and 3 (volumes 8-10, touches the end).
+V = mk(ones(1, 10), [50 61 61 50 50 50 50 61 61 61]);
+[s, tr] = run_stats_rev1(V, 60, 5);
+verifyEqual(tc, s([4 7 8 9]), [3 2 1 3], "longest, longest uncensored, n censored, longest censored");
+verifyTrue(tc, tr.censored(1));
+verifyEqual(tc, s(10:12), [3 2 3], "dips to 50 dBi break the episodes");
+% A near-lock: runs split by dips that stay within 5 dB form one episode.
+V1 = mk(ones(1, 10), [50 61 61 57 56 61 61 61 58 61]);
+[s1, t1] = run_stats_rev1(V1, 60, 5);
+verifyEqual(tc, s1(4), 3);
+verifyEqual(tc, [t1.ep_span(1) t1.ep_high(1)], [9 6], "volumes 2-10, six of them at 60 dBi");
+verifyTrue(tc, t1.ep_censored(1));
+s13 = run_stats_rev1(V1, 60, 3);
+verifyEqual(tc, s13(10), 5, "a 3 dB margin breaks at 56 dBi: volumes 6-10 remain");
+% Tie: an uncensored and a censored run of the same length; flagged censored.
+V2 = mk(ones(1, 7), [50 61 61 50 50 61 61]);
+[~, t2] = run_stats_rev1(V2, 60, 0);
+verifyTrue(tc, t2.censored(1), "a tie with a censored run is censored");
+% Incomplete volumes are dropped before counting.
+V3 = V;
+V3.complete(end) = false;
+s4 = run_stats_rev1(V3, 60, 5);
+verifyEqual(tc, s4([4 8]), [2 1], "the run 8-9 now ends at the last complete volume");
 end
 
 function testSidelobeMarginBracket(tc)

@@ -283,6 +283,30 @@ verifyTrue(tc, all(abs(L.slip_deg_per_vol) <= 180));
 rmdir(fileparts(d), "s");
 end
 
+function testReportNumbersRev10(tc)
+% Small run of the Rev 10 tables (independent recheck T1 to T8): every
+% file is written, ranks are competition ranks, m4 is the smallest of
+% |k x slip| over k = 1 to 4, and an episode spans at least its longest run.
+d = fullfile(tempname, "r10");
+rev10_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
+    "time_hours", 1, "n_repeats", 1, "modes_time", "VCP 212 SAILSx3 AVSET 6.4", "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev10");
+f = ["per_hour_modes", "per_hour_envelope", "per_hour_corr", "seeds_runs", "seeds_summary", "lock_trials", ...
+    "lock_m4", "lock_fit", "timing_modes"] + "_rev10.csv";
+for k = [f, "timing_rev10_machine.txt", "fig_lock_vs_m4_rev10.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+P = readtable(fullfile(d, "per_hour_modes_rev10.csv"), "TextType", "string");
+k = P.el_deg == 0.5;
+v = P.cuts_hit_60_pct(k);
+verifyEqual(tc, P.rank_cuts_hit_60_pct(k), 1 + sum(v' > v, 2), "competition rank");
+L = readtable(fullfile(d, "lock_trials_rev10.csv"), "TextType", "string");
+m4 = min(abs(mod((1:4).*L.slip_deg_per_vol + 180, 360) - 180), [], 2);
+verifyEqual(tc, L.m4_deg, m4, "AbsTol", 1e-9);
+verifyTrue(tc, all(L.ep_span_vols >= L.longest_run_vols));
+rmdir(fileparts(d), "s");
+end
+
 % =========================================================================
 function v = W_vol()
 v = nexrad_vcp_rev1(212, sails=3, avset_top_deg=6.4).volume_s;

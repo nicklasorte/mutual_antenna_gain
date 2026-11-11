@@ -281,16 +281,21 @@ x = (0:0.01:180)';
 [~, el_n] = nexrad_cuts(sys_n.scan);
 tu = unique(el_n(:));
 g0 = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(zeros(size(tu)), tu));   % beam azimuth on the path
-[g0m, ib] = max(g0);                              % first (lowest) cut on a tie
+g0m = max(g0);
+cand = find(g0 >= g0m - 1e-9);                     % cuts tied for the best on-path gain
+[~, j] = min(abs(tu(cand) - opts.el_nexrad_deg));   % on a tie, the cut nearest the path (recheck T9)
+ib = cand(j);
 g_pk_n = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(0, opts.el_nexrad_deg));   % beam on axis
-mb_on_path = g0m > g_pk_n - 20;                    % some cut's main beam, not a sidelobe, reaches the path (sidelobes are -29 dB or lower)
+gap_dB = g_pk_n - g0m;
+% Main beam on the path: the best cut is within 10 dB of its peak toward
+% the path. A horizontal path is 3.5 dB down on the 0.5 deg cut; a path
+% 1.1 deg above a 6.4 deg top cut is 17 dB down (recheck findings S9, T9).
+mb_on_path = gap_dB < 10;
 if ~mb_on_path
-    % Independent recheck finding S9: above the top cut (or far below the
-    % lowest) no cut puts its main beam on the path, so the "main beam"
-    % rows below are the best gain any cut gives on the path, not a main beam.
     warning("radar_coupling:noMainBeamOnPath", ...
-        "No NEXRAD cut has its main beam on the path (best on-path gain %.1f dBi, %.1f dB below peak); " + ...
-        "the reference levels labeled main beam use that best gain.", g0m, g_pk_n - g0m);
+        "No NEXRAD cut has its main beam on the path, which is above the top cut or below the lowest " + ...
+        "(best on-path gain %.1f dBi, %.1f dB below peak, at the %.2f deg cut); the reference levels " + ...
+        "labeled main beam use that best gain.", g0m, gap_dB, tu(ib));
 end
 gn = antenna_gain_rev1(pn, 0, opts.el_nexrad_deg, state(-x, tu(ib) + 0*x));
 ga = antenna_gain_rev1(pa, 180, opts.el_atc_deg, state(180 - x, sys_a.scan.tilt_deg + 0*x));
@@ -314,8 +319,8 @@ Rv = S.asr_rev(S.asr_rev.complete, :);
 rev_pct = arrayfun(@(v) 100*mean(Rv.max_g21_dBi >= v - 0.2), g);
 R = table(name, g, g_n, g_a, exceed, rev_pct, 'VariableNames', ["combination", ...
     "mag_dBi", "nexrad_gain_dBi", "asr11_gain_dBi", "time_exceeded_pct", "asr_rev_reached_pct"]);
-R.Properties.Description = sprintf("NEXRAD cut %.2f deg; main beam on the path: %d; " + ...
-    "NEXRAD sector scans are not modeled here (full rotation assumed)", tu(ib), mb_on_path);
+R.Properties.Description = sprintf("NEXRAD cut %.2f deg; main beam on the path: %d; on-path gain %.1f dB " + ...
+    "below peak; NEXRAD sector scans are not modeled here (full rotation assumed)", tu(ib), mb_on_path, gap_dB);
 end
 
 % -------------------------------------------------------------------------

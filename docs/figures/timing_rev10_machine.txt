@@ -1,0 +1,1 @@
+MACA64; 25.2.0.3150157 (R2025b) Update 4; computational threads 1; 11-Nov-2026 16:20:51; parallel pool open: 0; 3 repeats, median; 120 h per timed time series; single wall-clock runs (tic/toc)

@@ -110,4 +110,8 @@ T2 wasn't rechecked by the author.
 | 4 | Use standard ranks or say ranks are dense; state that the six-mode timing spread is within run-to-run noise and that a pool was open; time the modes that revisit the 0.5° cut most | T6, T8 |
 | 5 | Make the S9 warning name the cut it used and fire on the actual main-beam edge; document that it also fires below the lowest cut; make the censoring test independent of the code under test; fix T11 to T14 wording | T9 to T14 |
 
+## Status
+
+As of November 11, 2026, revision 10 (`docs/mutual_antenna_gain_methodology_report_rev10.md`) answers every finding; its Section 11.9 maps each to its fix. Lock episodes are defined by a 5 dB margin below the level rather than by a gap length, because a gap rule joins nearly every run when 30% to 50% of volumes are high.
+
 **DRAFT//PRE-DECISIONAL**
