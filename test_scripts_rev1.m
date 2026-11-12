@@ -338,9 +338,31 @@ for k = [f, "fig_lock_k16_rev12.png"]
     verifyTrue(tc, isfile(fullfile(d, k)), k);
 end
 F = readtable(fullfile(d, "lock_fit_rev12.csv"), "TextType", "string");
-verifyTrue(tc, all(F.periodic_lo_pct <= F.trials_periodic_ge_pct & F.trials_periodic_ge_pct <= F.periodic_hi_pct));
-verifyTrue(tc, all(F.null_lo_pct <= F.null_periodic_ge_pct & F.null_periodic_ge_pct <= F.null_hi_pct));
 verifyEqual(tc, unique(F.n_null_trials), 200);
+% Recheck W14: the interval method against a hand value. Clopper-Pearson
+% for 5 of 200: beta quantiles 0.025 of Beta(5, 196) and 0.975 of
+% Beta(6, 195), worked outside MATLAB (scipy.stats.beta).
+[~, ci] = binofit(5, 200);
+verifyEqual(tc, ci, [0.0081662 0.0573744], "AbsTol", 1e-6);
+rmdir(fileparts(d), "s");
+end
+
+function testReportNumbersRev13(tc)
+% Small run of the Rev 13 tables (independent recheck W1 to W4): every file
+% is written, the run span holds at least the repeating high volumes, and
+% periods up to 16 find runs at least as long as periods up to 4.
+d = fullfile(tempname, "r13");
+rev13_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
+    "n_null", 100, "parallel_flag", 0); %#ok<NASGU>
+evalc("report_numbers_rev13");
+f = ["seeds_runs", "lock_trials", "lock_k16", "lock_long_k", "lock_fit", "lock_walk_null"] + "_rev13.csv";
+for k = [f, "fig_lock_any16_rev13.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+L = readtable(fullfile(d, "lock_trials_rev13.csv"), "TextType", "string");
+verifyTrue(tc, all(L.per_span_high >= L.per_hits));
+verifyTrue(tc, all(L.per16_vols >= L.per_vols));
+verifyTrue(tc, all(L.lock_any16_drift_deg <= L.lock_run_drift_deg + 1e-9 | isnan(L.lock_run_drift_deg)));
 rmdir(fileparts(d), "s");
 end
 

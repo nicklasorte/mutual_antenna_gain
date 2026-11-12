@@ -323,6 +323,9 @@ g = 50*ones(1, 15); g([5 8 11]) = 61;              % every third volume, away fr
 [s, tr] = periodic_runs_rev1(mk(g), 60);
 verifyEqual(tc, s, [7 3 3 7 0], "3 hits spanning volumes 5 to 11 at k = 3, uncensored");
 verifyFalse(tc, tr.censored(1));
+verifyEqual(tc, [tr.first(1) tr.last(1)], [5 11], "span of the run (recheck W1)");
+s16 = periodic_runs_rev1(mk(g), 60, 16);
+verifyEqual(tc, s16(1:3), [7 3 3], "periods up to 16 find the same run (recheck W4)");
 r = run_stats_rev1(mk(g), 60, 5);
 verifyEqual(tc, [r(4) r(10)], [1 1], "runs and episodes see length 1");
 g2 = 50*ones(1, 12); g2([3 5 7 9 11]) = 62;        % every second volume, reaching volume 11 of 12

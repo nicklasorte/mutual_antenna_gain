@@ -116,4 +116,15 @@ W1, W2, and W4 weren't rechecked by the author.
 | 4 | Extend periodic runs to periods of 5 to 16 volumes, or state the limit and its effect on the seven trials with tight long locks but short runs | W4 |
 | 5 | Fix the wording and small items: the last paragraph of Section 9.3 and open item 3, the null-calibration claim, the path and level of "shorter recurrence isn't", Figure 15's alt text, the stray CSV column, the timing-spread base, and the always-true interval check | W5 to W14 |
 
+## Status after revision 13
+
+Revision 13 (`docs/mutual_antenna_gain_methodology_report_rev13.md`, Section 11.12) answers W1 to W14:
+
+- **W1:** every high volume from the first to the last of a run is counted; 8 of the 10 VCP 212 runs and 14 of the 22 VCP 34 runs are above the mode average, and "regular, not heavier, exposure" is withdrawn.
+- **W2:** each null trial draws one model trial's own share and length; the ratios become 12 to 93 (VCP 212, 4 hours) and 9.6 to 32 (VCP 34, 8 hours).
+- **W3:** the shares from the slip alone are given: 10 of 37 and 22 of 108. VCP 34 uses 9.62°, the largest slip-alone drift of a long run; this review's 117 used the period-based 10.29°.
+- **W4:** periodic runs extend to periods of up to 16 volumes. The seven trials have runs of 13 to 24 hours at their lock period, but at those periods long runs are common by chance.
+- **W5 to W14:** fixed as listed in Section 11.12.
+
+
 **DRAFT//PRE-DECISIONAL**

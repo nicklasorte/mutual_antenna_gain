@@ -20,9 +20,10 @@ function [s, tr] = periodic_runs_rev1(Vt, thr, k_max)
 %
 %   s    row: [longest duration (volumes), its period k, high volumes in
 %        it, longest uncensored duration, longest censored duration]
-%   tr   struct, one entry per trial: dur, k, hits, censored (of the
-%        longest periodic run; on a tie, the shortest period, and censored
-%        when any tied run is censored)
+%   tr   struct, one entry per trial: dur, k, hits, censored, first, last
+%        (of the longest periodic run; first and last are its first and
+%        last high volume, counted in complete volumes of the trial; on a
+%        tie, the shortest period, and censored when any tied run is)
 %
 %   Example:
 %     g = 50*ones(1, 15); g([5 8 11]) = 61;        % every third volume
@@ -41,13 +42,13 @@ V = Vt(Vt.complete, :);
 tu = unique(V.trial)';
 n_t = numel(tu);
 z = zeros(n_t, 1);
-tr = struct("dur", z, "k", z, "hits", z, "censored", false(n_t, 1));
+tr = struct("dur", z, "k", z, "hits", z, "censored", false(n_t, 1), "first", z, "last", z);
 all_dur = [];
 all_cen = false(0, 1);
 for jj = 1:n_t
     hit = V.max_g21_dBi(V.trial == tu(jj)) >= thr;
     n = numel(hit);
-    best = [0 0 0 0];                               % [duration, k, hits, censored]
+    best = [0 0 0 0 0 0];                           % [duration, k, hits, censored, first, last]
     for k = 1:k_max
         for r = 1:k
             idx = r:k:n;
@@ -68,7 +69,7 @@ for jj = 1:n_t
             [dm, im] = max(dur);
             cm = any(cen(dur == dm));
             if dm > best(1)
-                best = [dm k nh(im) cm];
+                best = [dm k nh(im) cm first(im) last(im)];
             elseif dm == best(1) && dm > 0
                 best(4) = best(4) || cm;            % a tie keeps the shortest period, censored if any tied run is (recheck V7)
             end
@@ -78,6 +79,8 @@ for jj = 1:n_t
     tr.k(jj) = best(2);
     tr.hits(jj) = best(3);
     tr.censored(jj) = best(4) == 1;
+    tr.first(jj) = best(5);
+    tr.last(jj) = best(6);
 end
 if isempty(all_dur)
     s = [0 0 0 0 0];
