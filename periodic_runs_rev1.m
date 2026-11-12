@@ -20,10 +20,15 @@ function [s, tr] = periodic_runs_rev1(Vt, thr, k_max)
 %
 %   s    row: [longest duration (volumes), its period k, high volumes in
 %        it, longest uncensored duration, longest censored duration]
-%   tr   struct, one entry per trial: dur, k, hits, censored, first, last
-%        (of the longest periodic run; first and last are its first and
-%        last high volume, counted in complete volumes of the trial; on a
-%        tie, the shortest period, and censored when any tied run is)
+%   tr   struct, one entry per trial: dur, k, hits, censored, first, last,
+%        span_hits (of the longest periodic run; first and last are its
+%        first and last high volume, counted in complete volumes of the
+%        trial; span_hits counts every high volume from first to last,
+%        on the period or between; on a tie, the shortest period, and
+%        censored when any tied run is). Because a run at period k ties
+%        with its sub-run at 2k when it has an odd number of hits, the
+%        censored flag at periods above 4 can mean "within up to k_max
+%        volumes of an end" (independent recheck of revision 13, Y7).
 %
 %   Example:
 %     g = 50*ones(1, 15); g([5 8 11]) = 61;        % every third volume
@@ -42,7 +47,7 @@ V = Vt(Vt.complete, :);
 tu = unique(V.trial)';
 n_t = numel(tu);
 z = zeros(n_t, 1);
-tr = struct("dur", z, "k", z, "hits", z, "censored", false(n_t, 1), "first", z, "last", z);
+tr = struct("dur", z, "k", z, "hits", z, "censored", false(n_t, 1), "first", z, "last", z, "span_hits", z);
 all_dur = [];
 all_cen = false(0, 1);
 for jj = 1:n_t
@@ -81,6 +86,9 @@ for jj = 1:n_t
     tr.censored(jj) = best(4) == 1;
     tr.first(jj) = best(5);
     tr.last(jj) = best(6);
+    if best(5) > 0
+        tr.span_hits(jj) = sum(hit(best(5):best(6)));
+    end
 end
 if isempty(all_dur)
     s = [0 0 0 0 0];

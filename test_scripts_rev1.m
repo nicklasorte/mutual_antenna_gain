@@ -290,6 +290,24 @@ function testReportNumbersRev10(tc)
 d = fullfile(tempname, "r10");
 rev10_overrides = struct("out_dir", d, "n_seeds", 1, "drift_trials", 2, "drift_hours", 0.5, ...
     "time_hours", 1, "n_repeats", 1, "modes_time", "VCP 212 SAILSx3 AVSET 6.4", "parallel_flag", 0); %#ok<NASGU>
+if ~isempty(gcp("nocreate"))
+    % The timing part refuses an open pool (its guard, T8); a batch job
+    % keeps its pool open, so check the guard and run the other parts
+    % (recheck of revision 13, Y8).
+    verifyError(tc, @() run_rev10_in(rev10_overrides), "report_numbers_rev10:poolOpen");
+    rev10_overrides.part = "seeds";
+    run_rev10_in(rev10_overrides);
+    f = ["per_hour_modes", "per_hour_envelope", "per_hour_corr", "seeds_runs", "seeds_summary", "lock_trials", ...
+        "lock_m4", "lock_fit"] + "_rev10.csv";
+    for k = [f, "fig_lock_vs_m4_rev10.png"]
+        verifyTrue(tc, isfile(fullfile(d, k)), k);
+    end
+    L = readtable(fullfile(d, "lock_trials_rev10.csv"), "TextType", "string");
+    m4 = min(abs(mod((1:4).*L.slip_deg_per_vol + 180, 360) - 180), [], 2);
+    verifyEqual(tc, L.m4_deg, m4, "AbsTol", 1e-9);
+    rmdir(fileparts(d), "s");
+    return
+end
 evalc("report_numbers_rev10");
 f = ["per_hour_modes", "per_hour_envelope", "per_hour_corr", "seeds_runs", "seeds_summary", "lock_trials", ...
     "lock_m4", "lock_fit", "timing_modes"] + "_rev10.csv";
@@ -364,6 +382,54 @@ verifyTrue(tc, all(L.per_span_high >= L.per_hits));
 verifyTrue(tc, all(L.per16_vols >= L.per_vols));
 verifyTrue(tc, all(L.lock_any16_drift_deg <= L.lock_run_drift_deg + 1e-9 | isnan(L.lock_run_drift_deg)));
 rmdir(fileparts(d), "s");
+end
+
+function testReportNumbersRev14(tc)
+% Small run of the Rev 14 tables (independent recheck Y1 to Y10) on the
+% committed Rev 13 per-trial file: the between share matches a hand count,
+% the threshold table is cumulative, the bootstrap brackets the grid
+% chance, and the walk table is in percent.
+src = fullfile(fileparts(which("report_numbers_rev14")), "docs", "figures");
+d = fullfile(tempname, "r14");
+run_rev14_in(struct("out_dir", d, "in_dir", src, "n_grid_sims", 200, "p_step", 0.05, ...
+    "n_boot", 200, "parallel_flag", 0, "cells", [0.5 60]));
+f = ["lock_offlattice", "lock_share_drift", "lock_null_grid", "lock_null_boot", "lock_long_k", "lock_walk_null"] + "_rev14.csv";
+for k = [f, "fig_lock_any16_rev14.png"]
+    verifyTrue(tc, isfile(fullfile(d, k)), k);
+end
+L = readtable(fullfile(src, "lock_trials_rev13.csv"), "TextType", "string");
+L = L(L.mode == "VCP 212 SAILSx3 AVSET 6.4" & L.el_deg == 0.5 & L.threshold_dBi == 60, :);
+A = readtable(fullfile(src, "ts_all_modes_rev8.csv"), "TextType", "string");
+tv = A.t_volume_s(find(A.mode == "VCP 212 SAILSx3 AVSET 6.4", 1));
+lg = L.per_vols*tv/3600 >= 4;
+bs = (L.per_span_high(lg) - L.per_hits(lg))./(L.per_vols(lg) - L.per_hits(lg));
+O = readtable(fullfile(d, "lock_offlattice_rev14.csv"), "TextType", "string");
+o = O(O.mode == "VCP 212 SAILSx3 AVSET 6.4" & O.el_deg == 0.5 & O.threshold_dBi == 60 & O.hours == 4, :);
+verifyEqual(tc, o.n_long, nnz(lg));
+verifyEqual(tc, o.median_between_share_long, median(bs, "omitnan"), "AbsTol", 1e-12);
+S = readtable(fullfile(d, "lock_share_drift_rev14.csv"), "TextType", "string");
+s = S(S.mode == "VCP 212 SAILSx3 AVSET 6.4" & S.hours == 4, :);
+verifyTrue(tc, all(diff(s.n_tight) >= 0) && all(diff(s.n_tight_long) >= 0), "cumulative in the threshold");
+verifyEqual(tc, s.n_tight(end), height(L), "every slip has a lock within 360/17 deg");
+B = readtable(fullfile(d, "lock_null_boot_rev14.csv"), "TextType", "string");
+verifyTrue(tc, all(B.null_boot_lo_pct <= B.null_grid_pct + 1e-12 & B.null_grid_pct <= B.null_boot_hi_pct + 1e-12));
+verifyEqual(tc, B.ratio_lo, B.model_lo_pct./B.null_boot_hi_pct, "RelTol", 1e-12);
+W0 = readtable(fullfile(src, "lock_walk_null_rev13.csv"), "TextType", "string");
+W = readtable(fullfile(d, "lock_walk_null_rev14.csv"), "TextType", "string");
+verifyEqual(tc, W.null_trial_ge_pct, 100*W0.null_trial_ge_pct, "AbsTol", 1e-12);
+verifyEqual(tc, W.chance_any_of_trials_pct, 100*(1 - (1 - W0.null_trial_ge_pct).^W0.n_trials), "AbsTol", 1e-9);
+rmdir(fileparts(d), "s");
+end
+
+function run_rev14_in(rev14_overrides) %#ok<INUSD>
+% Run report_numbers_rev14 in its own workspace, so its variables don't
+% overwrite the test's.
+evalc("report_numbers_rev14");
+end
+
+function run_rev10_in(rev10_overrides) %#ok<INUSD>
+% Run report_numbers_rev10 in its own workspace with the given overrides.
+evalc("report_numbers_rev10");
 end
 
 % =========================================================================

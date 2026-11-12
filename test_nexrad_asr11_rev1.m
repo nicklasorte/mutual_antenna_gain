@@ -336,6 +336,42 @@ verifyEqual(tc, periodic_runs_rev1(mk(g3), 60), [3 1 3 3 1], ...
     "run of 3 at k = 1; at k = 4 the single hit at volume 4 is censored (4 <= 4), length 1");
 end
 
+function testPeriodicRunsLongPeriod(tc)
+% Recheck of revision 13, Y3 and Y7: periods above 4 are found only with
+% k_max of at least the period, and the tie with the sub-run at twice the
+% period sets the censored flag. Values worked out by hand.
+mk = @(g) table(ones(numel(g), 1), true(numel(g), 1), g(:), 'VariableNames', ["trial" "complete" "max_g21_dBi"]);
+g = 50*ones(1, 60); g(10:7:52) = 61;               % every seventh volume, 7 hits, volumes 10 to 52 of 60
+s4 = periodic_runs_rev1(mk(g), 60, 4);
+verifyEqual(tc, s4, [1 1 1 1 0], "periods up to 4 see isolated high volumes");
+[s16, tr] = periodic_runs_rev1(mk(g), 60, 16);
+verifyEqual(tc, s16, [43 7 7 43 43], "7 hits over 43 volumes at k = 7");
+verifyEqual(tc, [tr.first tr.last tr.span_hits], [10 52 7]);
+verifyTrue(tc, tr.censored, "the tied k = 14 sub-run (10, 24, 38, 52) starts within 14 of the start");
+g2 = 50*ones(1, 60); g2(5:16:53) = 61;              % every 16th volume, volumes 5 to 53
+[s, tr2] = periodic_runs_rev1(mk(g2), 60, 16);
+verifyEqual(tc, s([1 2 3 5]), [49 16 4 49]);
+verifyTrue(tc, tr2.censored, "first high volume 5 is within 16 of the start");
+g3 = 50*ones(1, 15); g3([5 8 9 11]) = 61;           % period-3 run with one high volume between
+[s3, tr3] = periodic_runs_rev1(mk(g3), 60);
+verifyEqual(tc, s3(1:3), [7 3 3]);
+verifyEqual(tc, tr3.span_hits, 4, "span 5 to 11 holds 5, 8, 9, and 11");
+end
+
+function testNullTrialMapping(tc)
+% Recheck of revision 13, Y9 and Y11: null trial i uses model trial
+% 1 + mod(i - 1, n), and a parfor-style loop over i is reproducible.
+for i = 1:4
+    [p4, p16, j] = null_periodic_trial_rev1([0 1], [10 12], i, 0);
+    verifyEqual(tc, j, 1 + mod(i - 1, 2));
+    verifyEqual(tc, [p4 p16], [0 0] + (j == 2)*12, "share 0 gives no run; share 1 gives all 12 volumes");
+end
+a = null_periodic_trial_rev1(0.4, 100, 7, 5);
+b = null_periodic_trial_rev1(0.4, 100, 7, 5);
+verifyEqual(tc, a, b, "same substream, same draw");
+verifyError(tc, @() null_periodic_trial_rev1([0.2 0.3], 10, 1, 0), "null_periodic_trial_rev1:sizeMismatch");
+end
+
 function testPeriodicTieAndLockRate(tc)
 % Recheck V7: a tie between periods keeps the shortest period and is
 % censored when any tied run is. Recheck V2: the lock behind a periodic

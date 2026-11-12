@@ -79,4 +79,15 @@ Y2, Y4, and Y5 to Y12 weren't rechecked by the author.
 | 6 | State the period-16 8-hour result, and give hits and recurrence intervals for the seven trials. | Y6, Y7 |
 | 7 | Fix the CSV column label and the small wording items. | Y10, Y11, Y12 |
 
+## Status after revision 14
+
+Revision 14 (`docs/mutual_antenna_gain_methodology_report_rev14.md`, Section 11.13) answers Y1 to Y12:
+
+- **Y1:** the share of high volumes between the repeating ones is given (17% against 34% for VCP 212, 32% against 47% for VCP 34), and "at least as often as on average" is withdrawn.
+- **Y2:** the chance comparison resamples the 200 trial shares; the ratios become 6.3 to 112 (VCP 212, 4 hours) and 8.2 to 28.5 (VCP 34, 8 hours), close to this review's estimate of about 6 for the lower VCP 212 end.
+- **Y3, Y8, Y9:** `testPeriodicRunsLongPeriod`, `testNullTrialMapping`, and `testReportNumbersRev14` are added, and `testReportNumbersRev10` passes with a pool open.
+- **Y4:** Table 9-7 gives the share of tight locks that reach a long run at thresholds from 1° to 21.2°.
+- **Y5 to Y7, Y10 to Y12:** fixed as listed in Section 11.13.
+
+
 **DRAFT//PRE-DECISIONAL**
