@@ -2,7 +2,7 @@
 
 MATLAB model of the mutual antenna gain (MAG, antenna coupling) between scanning radars in 2.7 GHz to 3.1 GHz, for the NTIA 2.7 GHz Retuning LOE. It follows the Rec. ITU-R M.2069-0 Annex 1 method and includes a worked example between a NOAA WSR-88D (NEXRAD) weather radar and an FAA ASR-11 airport surveillance radar, with the FAA ASR-9 as a second ATC radar.
 
-**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev14.md` (and `.docx`). The independent reviews it answers are `docs/rev7_independent_review_rev1.md` to `docs/rev13_independent_review_rev1.md`; the earlier red-team findings and plan are in `docs/rev6_redteam_plan_rev1.md`.
+**DRAFT//PRE-DECISIONAL.** The methodology report is `docs/mutual_antenna_gain_methodology_report_rev15.md` (and `.docx`). For a first explanation, start with `docs/simple_mag_explainer_rev1.md` and `simple_mag_nexrad_asr11_rev1.m` (one WSR-88D cut and one ASR-11, exact percentiles to 99.9999%, a three-panel figure). The independent reviews it answers are `docs/rev7_independent_review_rev1.md` to `docs/rev13_independent_review_rev1.md`; the earlier red-team findings and plan are in `docs/rev6_redteam_plan_rev1.md`.
 
 ## Requirements
 
