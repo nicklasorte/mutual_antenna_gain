@@ -1,0 +1,53 @@
+case,method,pct,mag_dBi,upper_edge_dBi,ci_lo_dBi,ci_hi_dBi
+one cut,"C# (step BW/4, 1 dB)",50,8.54009899815321,9,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",90,8.97217819667577,9,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",99,35.8562632869993,36,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",99.9,44.525573114418,45,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",99.99,50.5786326086991,51,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",99.999,73.0872366667373,74,NaN,NaN
+one cut,"C# (step BW/4, 1 dB)",99.9999,75.2261710002576,76,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",50,9.00540038644929,9.01,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",90,9.00972069560872,9.01,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",99,34.9471981395829,34.95,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",99.9,45.3035220924166,45.31,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",99.99,50.4765235740724,50.48,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",99.999,72.3144307096134,72.32,NaN,NaN
+one cut,"walkthrough (step BW/100, 0.01 dB)",99.9999,75.6237380837046,75.63,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",50,9.00054002586164,9.001,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",90,9.00097204655095,9.001,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",99,34.9383546632026,34.939,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",99.9,45.2997139180254,45.3,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",99.99,50.4721917091253,50.473,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",99.999,72.309340203401,72.31,NaN,NaN
+one cut,"reference (step BW/400, 0.001 dB)",99.9999,75.6262990038362,75.627,NaN,NaN
+one cut,"Monte Carlo (1e+10 draws)",99,34.925,NaN,34.922,34.927
+one cut,"Monte Carlo (1e+10 draws)",99.9,45.301,NaN,45.301,45.301
+one cut,"Monte Carlo (1e+10 draws)",99.99,50.471,NaN,50.471,50.472
+one cut,"Monte Carlo (1e+10 draws)",99.999,72.298,NaN,72.274,72.319
+one cut,"Monte Carlo (1e+10 draws)",99.9999,75.623,NaN,75.616,75.629
+VCP 212,"C# (step BW/4, 1 dB)",50,8.53946734408777,9,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",90,8.97104121935799,9,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",99,32.2527878088651,33,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",99.9,44.0288676776422,45,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",99.99,50.0576646491653,51,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",99.999,69.6996588948439,70,NaN,NaN
+VCP 212,"C# (step BW/4, 1 dB)",99.9999,74.8762372085133,75,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",50,9.00539343158568,9.01,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",90,9.00970817685423,9.01,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",99,31.7014828803892,31.71,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",99.9,44.7179398257475,44.72,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",99.99,50.3215235972828,50.33,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",99.999,68.8847440562805,68.89,NaN,NaN
+VCP 212,"walkthrough (step BW/100, 0.01 dB)",99.9999,75.2813601497647,75.29,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",50,9.00053933296478,9.001,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",90,9.0009707993366,9.001,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",99,31.6758713786307,31.676,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",99.9,44.7311779427502,44.732,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",99.99,50.3176813138772,50.318,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",99.999,68.8721259377007,68.873,NaN,NaN
+VCP 212,"reference (step BW/400, 0.001 dB)",99.9999,75.283239836285,75.284,NaN,NaN
+VCP 212,"Monte Carlo (1e+10 draws)",99,31.668,NaN,31.665,31.672
+VCP 212,"Monte Carlo (1e+10 draws)",99.9,44.729,NaN,44.728,44.73
+VCP 212,"Monte Carlo (1e+10 draws)",99.99,50.315,NaN,50.313,50.316
+VCP 212,"Monte Carlo (1e+10 draws)",99.999,68.849,NaN,68.804,68.895
+VCP 212,"Monte Carlo (1e+10 draws)",99.9999,75.283,NaN,75.269,75.297
