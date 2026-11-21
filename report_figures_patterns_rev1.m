@@ -6,7 +6,12 @@
 %     fig_patterns_slices_rev1.png     0-360 deg worst-case slices, one panel per radar
 %     fig_patterns_zoom_rev1.png       the main beams, -10 to +10 deg
 %     fig_patterns_elevation_rev1.png  ASR elevation pattern; horizon gain versus tilt
-%     fig_patterns_compare_rev1.png    each radar against statgain and F.1245
+%     fig_patterns_compare_rev1.png    each radar against statgain and F.1245 (log angle)
+%     fig_patterns_nexrad_tilts_rev1.png   WSR-88D slices at 0, 0.5, 0.9, 1.3 deg tilt
+%     fig_patterns_asr_tilts_rev1.png      ASR-11 and ASR-9 slices at 0, 1, 2.5 deg tilt
+%     fig_patterns_nexrad_compare_rev1.png, fig_patterns_asr11_compare_rev1.png,
+%     fig_patterns_asr9_compare_rev1.png   main beam against statgain and F.1245 (linear)
+%     fig_patterns_fullturn_compare_rev1.png  -180 to 180 deg against statgain
 %     nexrad_worst_case_slice_rev1.csv, asr11_worst_case_slice_rev1.csv,
 %     asr9_worst_case_slice_rev1.csv   the N-by-2 slices at 0.1 deg
 %     patterns_compare_rev1.csv        gain at selected angles, every pattern
@@ -177,6 +182,97 @@ for k = 1:3
     end
 end
 exportgraphics(fh, fullfile(out_dir, "fig_patterns_compare_rev1.png"), "Resolution", 300); close(fh);
+
+% ---- Figures 5 to 10: single-panel views in the style of Figure 2
+% Signed azimuth (-180 to 180) for plotting.
+sgn = @(s) [s(s(:, 1) > 180, 1) - 360; s(s(:, 1) <= 180, 1)];
+gvl = @(s) [s(s(:, 1) > 180, 2); s(s(:, 1) <= 180, 2)];
+gvv = @(g) [g(az > 180); g(az <= 180)];
+lg = {"Location", "northeast", "Box", "off", "FontName", "Times New Roman", "FontSize", 8, "TextColor", C.dark};
+
+% Figure 5 (paper Figure 4): WSR-88D at its operational tilts
+fh = new_fig(6.5, 3.4); ax = axes(fh); hold(ax, "on");
+tilts = [0 0.5 0.9 1.3];
+sty = {"-", "-", "--", ":"};
+col = {C.blue, C.dark, C.gray, C.purple};
+for k = 1:numel(tilts)
+    s = nexrad_worst_case_slice_rev1(step_deg=0.01, tilt_deg=tilts(k));
+    plot(ax, sgn(s), gvl(s), sty{k}, "Color", col{k}, "LineWidth", 1.2, ...
+        "DisplayName", sprintf("Tilt %.1f%s: %.1f dBi peak on the horizon", tilts(k), deg, s(1, 2)));
+end
+style_ax(ax, C, fs); xlim(ax, [-5 5]); ylim(ax, [0 50]);
+xlabel(ax, "Beam azimuth relative to the bearing of the station (degrees)", fs{:});
+ylabel(ax, "WSR-88D gain toward the station (dBi)", fs{:});
+legend(ax, lg{:});
+exportgraphics(fh, fullfile(out_dir, "fig_patterns_nexrad_tilts_rev1.png"), "Resolution", 300); close(fh);
+
+% Figure 6 (paper Figure 5): ASR-11 and ASR-9 at 0, 1 and 2.5 deg tilt
+fh = new_fig(6.5, 3.4); ax = axes(fh); hold(ax, "on");
+tilts = [0 1 2.5];
+sty = {"-", "-.", "--"};
+for k = 1:numel(tilts)
+    s = asr11_worst_case_slice_rev1(step_deg=0.01, tilt_deg=tilts(k));
+    plot(ax, sgn(s), gvl(s), sty{k}, "Color", C.blue, "LineWidth", 1.2, ...
+        "DisplayName", sprintf("ASR-11, tilt %.1f%s: %.1f dBi peak", tilts(k), deg, s(1, 2)));
+end
+for k = 1:numel(tilts)
+    s = asr9_worst_case_slice_rev1(step_deg=0.01, tilt_deg=tilts(k));
+    plot(ax, sgn(s), gvl(s), sty{k}, "Color", C.gray, "LineWidth", 1.0, ...
+        "DisplayName", sprintf("ASR-9, tilt %.1f%s: %.1f dBi peak", tilts(k), deg, s(1, 2)));
+end
+style_ax(ax, C, fs); xlim(ax, [-6 6]); ylim(ax, [0 40]);
+xlabel(ax, "Beam azimuth relative to the bearing of the station (degrees)", fs{:});
+ylabel(ax, "Gain toward the station (dBi)", fs{:});
+legend(ax, lg{:});
+exportgraphics(fh, fullfile(out_dir, "fig_patterns_asr_tilts_rev1.png"), "Resolution", 300); close(fh);
+
+% Figures 7 to 9 (paper Figures 7 to 9): each radar's main beam against
+% statgain and F.1245, linear azimuth
+avg = antenna_prepare_rev1(struct("type", "rect", "g_max_dBi", 34, "az_bw_deg", 1.45, ...
+    "az_sll_dB", 9.5 - 34, "el_bw_deg", 4.8, "el_pattern", "csc2", "csc2_end_deg", 30, ...
+    "csc2_floor_dB", -30.5, "envelope", "average", "floor_dB", -30.5));
+g_avg = antenna_gain_rev1(avg, 0, 0, struct("mech_az", az, "tilt", zeros(size(az))));
+cmp = {
+    "WSR-88D", "nexrad", s_nex, s_sg_nex, g_f_nex, "45.5", "46", [-15 50]
+    "ASR-11", "asr11", s_a11, s_sg_a11, g_f_asr, "34", "34", [-15 58]
+    "ASR-9", "asr9", s_a9, s_sg_a9, g_f_asr, "33.5", "34", [-15 50]};
+for k = 1:3
+    fh = new_fig(6.5, 3.4); ax = axes(fh); hold(ax, "on"); %#ok<LAXES> one axes per figure
+    plot(ax, sgn(cmp{k, 3}), gvl(cmp{k, 3}), "Color", C.blue, "LineWidth", 1.5, ...
+        "DisplayName", cmp{k, 1} + " worst-case slice (this paper)");
+    if k == 1
+        plot(ax, sgn(s_nssl), gvl(s_nssl), "-.", "Color", C.blue, "LineWidth", 1.0, ...
+            "DisplayName", "WSR-88D, NSSL measurements");
+    end
+    if k == 2
+        plot(ax, sgn(s_a11), gvv(g_avg), ":", "Color", C.dark, "LineWidth", 1.3, ...
+            "DisplayName", "ASR-11, M.1851-2 average envelope");
+        yline(ax, i_a11.first_sl_dBi, ":", "Color", C.purple, "LineWidth", 0.8, ...
+            "DisplayName", "ASR-11 first sidelobe in M.1464-2 (+9.5 dBi)");
+    end
+    plot(ax, sgn(cmp{k, 4}), gvl(cmp{k, 4}), "Color", C.gray, "LineWidth", 1.1, ...
+        "DisplayName", "Statgain at " + cmp{k, 6} + " dBi");
+    plot(ax, sgn(cmp{k, 3}), gvv(cmp{k, 5}), "--", "Color", C.purple, "LineWidth", 1.0, ...
+        "DisplayName", "F.1245 at " + cmp{k, 7} + " dBi");
+    style_ax(ax, C, fs); xlim(ax, [-10 10]); ylim(ax, cmp{k, 8});
+    xlabel(ax, "Beam azimuth relative to the bearing of the station (degrees)", fs{:});
+    ylabel(ax, "Gain toward the station (dBi)", fs{:});
+    legend(ax, lg{:});
+    exportgraphics(fh, fullfile(out_dir, "fig_patterns_" + cmp{k, 2} + "_compare_rev1.png"), "Resolution", 300); close(fh);
+end
+
+% Figure 10 (paper Figure 10): the full turn against statgain
+fh = new_fig(6.5, 3.4); ax = axes(fh); hold(ax, "on");
+plot(ax, sgn(s_nex), gvl(s_nex), "Color", C.blue, "LineWidth", 1.4, "DisplayName", "WSR-88D (ROC specification)");
+plot(ax, sgn(s_a11), gvl(s_a11), "Color", C.dark, "LineWidth", 1.2, "DisplayName", "ASR-11");
+plot(ax, sgn(s_a9), gvl(s_a9), "--", "Color", C.dark, "LineWidth", 1.0, "DisplayName", "ASR-9");
+plot(ax, sgn(s_sg_nex), gvl(s_sg_nex), "Color", C.gray, "LineWidth", 1.1, "DisplayName", "Statgain at 45.5 dBi");
+plot(ax, sgn(s_sg_a11), gvl(s_sg_a11), ":", "Color", C.gray, "LineWidth", 1.3, "DisplayName", "Statgain at 34 dBi");
+style_ax(ax, C, fs); xlim(ax, [-180 180]); xticks(ax, -180:45:180); ylim(ax, [-15 50]);
+xlabel(ax, "Beam azimuth relative to the bearing of the station (degrees)", fs{:});
+ylabel(ax, "Gain toward the station (dBi)", fs{:});
+legend(ax, lg{:});
+exportgraphics(fh, fullfile(out_dir, "fig_patterns_fullturn_compare_rev1.png"), "Resolution", 300); close(fh);
 
 disp(T);
 fprintf("WSR-88D: x = %.4f deg; far field %.0f m\n", i_nex.x_deg, i_nex.far_field_m);

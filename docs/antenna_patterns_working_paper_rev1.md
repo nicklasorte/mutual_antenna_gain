@@ -54,6 +54,8 @@ The WSR-88D uses a pencil beam from an 8.53 m parabolic reflector. The pattern i
 
 ### Parameters
 
+*Table 1. WSR-88D antenna parameters.*
+
 | Parameter | Value | Source |
 | --- | --- | --- |
 | Peak gain | 45.5 dBi, including the radome | ROC_TECH (M1849 Radar 1: 45 dBi) |
@@ -81,7 +83,7 @@ At 0° tilt, θ equals the azimuth from the station.
 
 ### Options
 
-`pattern="roc_spec"` (the default) uses the ROC specification, the upper bound. `pattern="nssl_measured"` uses the KOUN measurements, which are 2.6 to 21 dB lower in the sidelobes (Figure 4, top). The NSSL report has no back-lobe data, so the function holds the 20° level to 180°.
+`pattern="roc_spec"` (the default) uses the ROC specification, the upper bound. `pattern="nssl_measured"` uses the KOUN measurements, which are 2.6 to 21 dB lower in the sidelobes (Figure 6, top, and Figure 7). The NSSL report has no back-lobe data, so the function holds the 20° level to 180°.
 
 ### Range of validity
 
@@ -92,6 +94,8 @@ The pattern holds beyond the far-field distance 2D<sup>2</sup>/λ, about 1.38 km
 The ASR-11 antenna is a reflector with a fan beam, narrow in azimuth and broad in elevation. A cosecant-squared skirt above the beam covers aircraft at high elevation. This paper models the low beam, which transmits and receives.
 
 ### Parameters
+
+*Table 2. ASR-11 antenna parameters (low beam).*
 
 | Parameter | Value | Source |
 | --- | --- | --- |
@@ -131,6 +135,8 @@ The ASR-9 antenna has the same fan-beam form as the ASR-11. WEBER_1999 describes
 
 ### Parameters
 
+*Table 3. ASR-9 antenna parameters (low beam).*
+
 | Parameter | Value | Source |
 | --- | --- | --- |
 | Peak gain | 33.5 dBi | M1464 Radar B (WEBER_1999: about 34 dB) |
@@ -156,6 +162,18 @@ Figure 3b shows the peak gain toward the horizon against tilt for all three rada
 
 *Figure 3. Every radar has its highest horizon gain at 0° tilt, so the 0° slice bounds every tilt. a: ASR-11 elevation pattern at 0° and 2.5° tilt. b: Peak horizon gain against beam elevation. Source: `report_figures_patterns_rev1.m` (2026).*
 
+Figures 4 and 5 show the whole main beam at several tilts. For the WSR-88D, Figure 4 uses the lowest cuts of the operational scan patterns. Each tilt lowers the peak on the horizon and narrows the part of the turn above the sidelobe level. At 1.3°, only a 21.8 dBi bump is left.
+
+![Line plot of WSR-88D gain toward the station in dBi against beam azimuth from -5 to 5 degrees, for beam tilts of 0, 0.5, 0.9, and 1.3 degrees. The peaks on the horizon are 45.5, 42.0, 34.1, and 21.8 dBi. Every curve falls to the 16.5 dBi sidelobe shelf; the higher the tilt, the narrower the beam above the shelf.](figures/fig_patterns_nexrad_tilts_rev1.png)
+
+*Figure 4. Each step up in WSR-88D tilt lowers the horizon peak, from 45.5 dBi at 0° to 21.8 dBi at 1.3°. Slices at 0°, 0.5°, 0.9°, and 1.3° tilt. Source: `report_figures_patterns_rev1.m` (2026).*
+
+The ASR fan beams are broad in elevation, so tilt changes them much less (Figure 5). From 0° to 2.5° tilt, the ASR-11 and ASR-9 peaks each drop 3.3 dB. The floors don't change.
+
+![Line plot of gain toward the station in dBi against beam azimuth from -6 to 6 degrees for the ASR-11 (blue) and ASR-9 (gray) at tilts of 0, 1, and 2.5 degrees. ASR-11 peaks are 34.0, 33.5, and 30.7 dBi; ASR-9 peaks are 33.5, 33.0, and 30.2 dBi. The ASR-11 curves fall to a 3.5 dBi floor and the ASR-9 curves to a 5.5 dBi floor.](figures/fig_patterns_asr_tilts_rev1.png)
+
+*Figure 5. ASR tilt lowers the horizon peak by at most 3.3 dB, so the 0° slice is close to every operational case. Slices at 0°, 1°, and 2.5° tilt. Source: `report_figures_patterns_rev1.m` (2026).*
+
 ## Comparison with generic patterns
 
 Two generic patterns are common in spectrum studies. Neither needs a beamwidth or sidelobe level:
@@ -167,11 +185,33 @@ Both patterns are rotationally symmetric, so they treat every antenna as a penci
 
 ![Three line plots of gain in dBi against beam azimuth from 0.05 to 180 degrees on a log scale, one per radar. Each shows the radar-specific pattern in blue, statgain in gray, and F.1245 dashed in purple. WSR-88D: all three agree in the main beam; statgain and F.1245 sit above the ROC shelf from about 1.4 to 3.5 degrees, then fall below it, ending near -12 dBi against the 5.5 dBi specification; the NSSL measurements, dash-dot, sit below the specification. ASR-11 and ASR-9: statgain and F.1245 have main beams more than twice as wide, so they are far above the radar patterns from about 1 to 20 degrees, then fall below the radar floors, ending near -6 and -10 dBi.](figures/fig_patterns_compare_rev1.png)
 
-*Figure 4. Generic patterns overstate the ASR beam near the peak and understate every radar's far sidelobes. Radar-specific slices against statgain and F.1245 at each radar's peak gain. Source: `report_figures_patterns_rev1.m` (2026).*
+*Figure 6. Generic patterns overstate the ASR beam near the peak and understate every radar's far sidelobes. Radar-specific slices against statgain and F.1245 at each radar's peak gain. Source: `report_figures_patterns_rev1.m` (2026).*
 
-Table 1 gives the gain at selected azimuths.
+Figures 7 to 9 show the same comparison on a linear azimuth scale, one radar at a time, over the main beam. For the WSR-88D (Figure 7), all three patterns agree on the main beam. Outside it, statgain and F.1245 cross the ROC shelf near 3.5° and fall below it.
 
-*Table 1. Gain toward a station on the horizon at 0° tilt, in dBi.*
+![Line plot of gain in dBi against beam azimuth from -10 to 10 degrees. The WSR-88D worst-case slice (blue) peaks at 45.5 dBi and drops to a 16.5 dBi shelf at about 1.4 degrees. The NSSL measurements (blue, dash-dot) fall to about 10.5 dBi at 2 degrees and -4.5 dBi at 10 degrees. Statgain at 45.5 dBi (gray) and F.1245 at 46 dBi (purple, dashed) match the main beam, run above the shelf from about 1.4 to 3.5 degrees, and fall to about 5 dBi at 10 degrees.](figures/fig_patterns_nexrad_compare_rev1.png)
+
+*Figure 7. Statgain and F.1245 match the WSR-88D main beam, sit above the ROC shelf out to about 3.5°, then fall below it. Source: `report_figures_patterns_rev1.m` (2026).*
+
+For the ASR-11 (Figure 8), the generic main beams are more than twice as wide as the radar's. The M.1851-2 average envelope, which M.1851-2 gives for aggregate interference, reaches the floor at 2.78° instead of 3.55°.
+
+![Line plot of gain in dBi against beam azimuth from -10 to 10 degrees. The ASR-11 worst-case slice (blue) peaks at 34 dBi and falls to a 3.5 dBi floor at about 3.6 degrees. The M.1851-2 average envelope (dotted) follows the same main beam but reaches the floor at about 2.8 degrees. A dotted purple line marks the +9.5 dBi first sidelobe in M.1464-2. Statgain (gray) and F.1245 (purple, dashed) at 34 dBi have much wider main beams, about 18.5 dBi at 4 to 5 degrees and 7 to 11 dBi at 10 degrees.](figures/fig_patterns_asr11_compare_rev1.png)
+
+*Figure 8. The generic patterns are far above the ASR-11 slice from 1° to 10°; the M.1851-2 average envelope is below it. Source: `report_figures_patterns_rev1.m` (2026).*
+
+![Line plot of gain in dBi against beam azimuth from -10 to 10 degrees. The ASR-9 worst-case slice (blue) peaks at 33.5 dBi and falls to a 5.5 dBi floor at about 2.8 degrees. Statgain at 33.5 dBi (gray) and F.1245 at 34 dBi (purple, dashed) have much wider main beams and stay above the slice out to 10 degrees.](figures/fig_patterns_asr9_compare_rev1.png)
+
+*Figure 9. The ASR-9 comparison matches the ASR-11's: the generic main beams are more than twice as wide. Source: `report_figures_patterns_rev1.m` (2026).*
+
+Figure 10 shows the full turn. The generic patterns fall below the radar-specific levels beyond 14° to 20° for the ASRs and beyond 3.3° to 3.6° for the WSR-88D. They stay below them for the rest of the turn.
+
+![Line plot of gain in dBi against beam azimuth from -180 to 180 degrees. The WSR-88D and ASR-9 slices sit at 5.5 dBi and the ASR-11 slice at 3.5 dBi outside their main beams, which are narrow spikes at 0 degrees. Statgain at 45.5 dBi (gray) falls to -11.75 dBi beyond 48 degrees, and statgain at 34 dBi (gray, dotted) to -6 dBi.](figures/fig_patterns_fullturn_compare_rev1.png)
+
+*Figure 10. Over most of the turn, statgain is 9.5 to 17.3 dB below the radar-specific far sidelobes. The WSR-88D and ASR-9 lines overlap at 5.5 dBi. Source: `report_figures_patterns_rev1.m` (2026).*
+
+Table 4 gives the gain at selected azimuths.
+
+*Table 4. Gain toward a station on the horizon at 0° tilt, in dBi.*
 
 | Azimuth | WSR-88D, ROC spec | WSR-88D, NSSL | Statgain 45.5 | F.1245 46 | ASR-11 | ASR-9 | Statgain 34 | F.1245 34 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -247,9 +287,11 @@ The same slices at a 0.1° step are in `docs/figures` as CSV files: `nexrad_wors
   - The ASR and statgain slices match `antenna_prepare_rev1` and `antenna_gain_rev1` within 10<sup>−9</sup> dB at 0°, 1°, and 2.5° tilt.
   - The WSR-88D slices match the repository's off-axis table within 10<sup>−3</sup> dB, except within 0.006° of the main-beam corner, where the table's 0.005° grid rounds the corner by up to 0.25 dB. The function computes the corner exactly.
 - **Code analysis.** MATLAB `checkcode` reports no messages for the four functions and the figure script.
-- **Figures and tables.** `report_figures_patterns_rev1.m` writes all four figures and every CSV file in this paper. Every value in Table 1 comes from `patterns_compare_rev1.csv`.
+- **Figures and tables.** `report_figures_patterns_rev1.m` writes all 10 figures and every CSV file in this paper. Every value in Table 4 comes from `patterns_compare_rev1.csv`.
 
 ## Code
+
+*Table 5. MATLAB files for this paper.*
 
 | File | What it does |
 | --- | --- |
@@ -257,7 +299,7 @@ The same slices at a 0.1° step are in `docs/figures` as CSV files: `nexrad_wors
 | `asr11_worst_case_slice_rev1.m` | ASR-11 slice, M.1851-2 cosine taper and cosecant-squared elevation pattern |
 | `asr9_worst_case_slice_rev1.m` | ASR-9 slice, same model with Radar B values and the WEBER_1986 floor |
 | `statgain_worst_case_slice_rev1.m` | Generic statgain slice for any peak gain of 10 dBi or more |
-| `report_figures_patterns_rev1.m` | Writes Figures 1 to 4, the slice CSV files, `patterns_compare_rev1.csv`, and `patterns_params_rev1.csv` |
+| `report_figures_patterns_rev1.m` | Writes Figures 1 to 10, the slice CSV files, `patterns_compare_rev1.csv`, and `patterns_params_rev1.csv` |
 | `test_worst_case_slices_rev1.m` | The tests in [Verification](#verification) |
 
 ## Antenna model sources
@@ -276,6 +318,8 @@ The same slices at a 0.1° step are in `docs/figures` as CSV files: `nexrad_wors
 
 ## Numbers ledger
 
+*Table 6. Numbers ledger: each value in this paper, its exact value, and its source.*
+
 | Quantity | Exact value | Source | Form used |
 | --- | --- | --- | --- |
 | WSR-88D main beam meets the ROC envelope | 1.4380° | `info.x_deg` | 1.438° |
@@ -289,9 +333,13 @@ The same slices at a 0.1° step are in `docs/figures` as CSV files: `nexrad_wors
 | ASR-11 horizon gain at 2.5° tilt | 30.71 dBi | `info.el_fn` at tilt 2.5° | 30.7 dBi, 3.3 dB lower |
 | Share of the turn above the far level: WSR-88D; ASR-11; ASR-9 | 5.56%; 1.98%; 1.54% | `report_figures_patterns_rev1` | 5.6%; 2.0%; 1.5% |
 | Statgain implied beamwidth: 45.5; 34; 33.5 dBi | 0.920°; 3.456°; 3.661° | `info.bw_implied_deg` | Same |
-| Far sidelobe gap, statgain: WSR-88D; ASR-11; ASR-9 | 17.25; 9.5; 11.25 dB | Table 1 | 17.3; 9.5; 11.3 dB |
-| Far sidelobe gap, F.1245: WSR-88D; ASR-11 | 18.075; 13.075 dB | Table 1 | 18.1; 13.1 dB |
-| Largest statgain excess over the ASR-11 slice | 18.50 dB at 3° | Table 1 | 18.5 dB |
-| Table 1 values | as tabulated | `patterns_compare_rev1.csv` | Table 1 |
+| Far sidelobe gap, statgain: WSR-88D; ASR-11; ASR-9 | 17.25; 9.5; 11.25 dB | Table 4 | 17.3; 9.5; 11.3 dB |
+| Far sidelobe gap, F.1245: WSR-88D; ASR-11 | 18.075; 13.075 dB | Table 4 | 18.1; 13.1 dB |
+| Largest statgain excess over the ASR-11 slice | 18.50 dB at 3° | Table 4 | 18.5 dB |
+| WSR-88D horizon peak at 0.9° and 1.3° tilt | 34.140; 21.798 dBi | `nexrad_worst_case_slice_rev1` | 34.1; 21.8 dBi |
+| ASR peak at 1° and 2.5° tilt: ASR-11; ASR-9 | 33.507, 30.708; 33.007, 30.208 dBi | `asr11_`, `asr9_worst_case_slice_rev1` | 33.5, 30.7; 33.0, 30.2 dBi |
+| Generic pattern crossings: statgain WSR-88D, ASR-11, ASR-9; F.1245 WSR-88D, ASR | 3.55°, 19.95°, 17.0°; 3.28°, 14.4° | Solve each Table 4-1 or F.1245 sidelobe law for the radar level | 3.6°, 20°, 17°; 3.3°, 14° |
+| ASR-11 average envelope reaches the floor | 2.776° | 1.45/2.33 exp((30.5 − 4.32)/17.51) | 2.78° |
+| Table 4 values | as tabulated | `patterns_compare_rev1.csv` | Table 4 |
 
 **DRAFT//PRE-DECISIONAL**
